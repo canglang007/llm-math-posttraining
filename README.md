@@ -7,10 +7,11 @@
 ## 当前状态
 
 - 项目骨架、数据格式、答案抽取、prompt 构造、评测和切分工具已建立；
-- 23 个本地单测通过；
+- 28 个本地单测通过；
 - GSM8K 已下载：train 7473 / test 1319；
 - MATH 已下载：train 7498 / test 5000（train 有 2 条无 boxed 答案被跳过）；
-- SFT 数据已生成：GSM8K train 7473 条、MATH train 7498 条；
+- SFT 数据：GSM8K 6973 train / 500 dev，MATH 6998 train / 500 dev；
+- QLoRA SFT 训练脚本和 12GB/24GB 配置已写好，只做了 dry-run；
 - RFT/DPO 数据构造器已实现，并在小样本上验证（RFT 2 条、DPO 1 对）；
 - 数据放在 `data/`（gitignored），provenance 在 `data/raw/provenance.json`；
 - 尚未训练，尚未使用服务器。
@@ -35,14 +36,23 @@ src/math_posttrain/
   evaluation.py   pass@1、抽取失败、分类指标
   sft.py          公开 CoT → Qwen chat SFT records
   preferences.py  RFT / DPO records（答案验证）
+  config.py       YAML 配置校验
+  training.py     SFTDataset、QLoRA 加载、Trainer
 
 scripts/
   prepare_data.py          下载 GSM8K/MATH（带 provenance）
   eval_predictions.py      对预测 JSONL 做评测
-  build_sft_data.py        生成 SFT 数据
+  build_sft_data.py        生成 SFT 数据（可切 dev）
   build_preference_data.py 生成 RFT/DPO 数据
+  train_sft.py             QLoRA SFT 训练
+  evaluate_model.py        生成预测并算 pass@1
+
+configs/
+  sft_qwen3_4b_24gb.yaml   seq 4096 / r16
+  sft_qwen3_4b_12gb.yaml   seq 2048 / r8
 
 docs/
+  handoff.md                新会话交接（自包含）
   project-charter.md        项目背景、目标、非目标
   experiment-design.md      数据、方法、实验矩阵、指标
   data-provenance.md        数据来源、许可证、切分、污染说明
@@ -110,6 +120,50 @@ DPO record：
 {"id": "...", "prompt_messages": [system, user],
  "chosen": "正确解答", "rejected": "错误解答", "reference": "..."}
 ```
+
+## SFT 训练
+
+先 dry-run 校验配置和数据（不需要模型）：
+
+```bash
+python scripts/train_sft.py --config configs/sft_qwen3_4b_24gb.yaml --dry-run
+```
+
+服务器上先下载 Base 模型：
+
+```bash
+hf download Qwen/Qwen3-4B-Base --local-dir /data/models/Qwen3-4B-Base
+```
+
+训练：
+
+```bash
+# 24GB
+python scripts/train_sft.py --config configs/sft_qwen3_4b_24gb.yaml
+
+# 12GB（4070）
+python scripts/train_sft.py --config configs/sft_qwen3_4b_12gb.yaml
+```
+
+评测（dev 选 checkpoint；test 只评一次）：
+
+```bash
+# dev pass@1，选 checkpoint
+python scripts/evaluate_model.py \
+  --model-path /data/models/Qwen3-4B-Base \
+  --adapter experiments/sft/qwen3-4b-gsm8k-24gb/checkpoint-XXX \
+  --data-file data/processed/sft/gsm8k-dev.raw.jsonl \
+  --dataset gsm8k
+
+# test 只跑一次
+python scripts/evaluate_model.py \
+  --model-path /data/models/Qwen3-4B-Base \
+  --adapter experiments/sft/qwen3-4b-gsm8k-24gb \
+  --data-file data/raw/gsm8k/test.jsonl \
+  --dataset gsm8k
+```
+
+如果 Base tokenizer 没有 chat template，训练/评测会自动使用 Qwen ChatML fallback。
 
 ## 下一步
 

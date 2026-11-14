@@ -7,7 +7,7 @@ name = "llm-math-posttraining"
 version = "0.1.0"
 description = "Public-data post-training for small math reasoning models"
 requires-python = ">=3.11,<3.14"
-dependencies = []
+dependencies = ["PyYAML>=6.0,<7"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3,<9", "ruff>=0.12,<1"]
