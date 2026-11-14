@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-math-posttraining"
+version = "0.1.0"
+description = "Public-data post-training for small math reasoning models"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<9", "ruff>=0.12,<1"]
+eval = ["datasets>=3,<5", "huggingface_hub>=0.30,<1", "sympy>=1.13,<2"]
+train = [
+  "torch>=2.4",
+  "transformers>=4.50,<5",
+  "peft>=0.14,<1",
+  "trl>=0.15,<1",
+  "accelerate>=1.0,<2",
+  "bitsandbytes>=0.45,<1",
+  "datasets>=3,<5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/math_posttrain"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
