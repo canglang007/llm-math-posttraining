@@ -183,7 +183,8 @@ python scripts/evaluate_model.py \
 - 服务器凭据不写入仓库；工作区 `/data/llm-math-posttraining`，长任务用 `tmux`（会话 `bootstrap`），日志 `/data/bootstrap.log`。pip 用清华源（`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`），HF 用 `HF_ENDPOINT=https://hf-mirror.com`；pypi.org 直连很慢，会卡在 build dependencies。
 - 12GB 卡对应 `configs/sft_qwen3_4b_12gb.yaml`（seq 2048/r8）；24GB 配置在这台服务器上不适用。
 - conda 环境 `torch` 预置 numpy 1.26.4，与 datasets 4.x 要求的 pyarrow>=21 冲突（会导致 `import transformers` 失败）；已统一升级到 numpy 2.5.4 + pyarrow 26.0.1，详见 issue-log。服务器自检除 `pytest -q` 外，还要做一次训练依赖全量 import。
-- `evaluate_model.py` 生成时已合并 `<|im_end|>` 到 eos 并加对话续写停止词；Base 的 generation_config 只认 `<|endoftext|>`（151643），不修会跑满 max_new_tokens 并续写下一轮对话，污染 `####` 答案抽取，详见 issue-log。
+- `evaluate_model.py` 生成时已合并 `<|im_end|>`/`<|im_start|>` 到 eos，并加字符串停止词与生成后截断；Base 的 generation_config 只认 `<|endoftext|>`（151643），不修会跑满 max_new_tokens 并续写下一轮对话，污染 `####` 答案抽取，详见 issue-log。
+- 正式评测固定 `--batch-size 1`：`>1` 会因左填充与 4bit 数值路径改变 greedy 结果（实测 5 题 accuracy 0.6→0.4），且 GPU 利用率低是 batch=1 自回归 decode 的正常形态，不是故障。`evaluate_model.py` 每 10 题打印 `[progress] n/total`，便于在 tmux 里看进度。
 
 ## 10. 不要做
 

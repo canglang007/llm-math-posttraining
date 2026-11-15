@@ -3,6 +3,7 @@ from math_posttrain.prompts import (
     build_prompt,
     generation_stop_strings,
     resolve_eos_token_ids,
+    truncate_generation,
 )
 from math_posttrain.types import Example
 
@@ -11,7 +12,7 @@ class _FakeTokenizer:
     unk_token_id = None
 
     def convert_tokens_to_ids(self, token: str) -> int:
-        return {"<|im_end|>": 151645}.get(token, 0)
+        return {"<|im_end|>": 151645, "<|im_start|>": 151644}.get(token, 0)
 
 
 class _UnknownTokenizer(_FakeTokenizer):
@@ -42,13 +43,24 @@ def test_chat_messages_put_instruction_with_question() -> None:
 
 def test_resolve_eos_token_ids_merges_chat_eos() -> None:
     tokenizer = _FakeTokenizer()
-    assert resolve_eos_token_ids(tokenizer, 151643) == [151643, 151645]
-    assert resolve_eos_token_ids(tokenizer, [151643, 151645]) == [151643, 151645]
-    assert resolve_eos_token_ids(tokenizer, None) == [151645]
+    assert resolve_eos_token_ids(tokenizer, 151643) == [151643, 151645, 151644]
+    assert resolve_eos_token_ids(tokenizer, [151643, 151645]) == [151643, 151645, 151644]
+    assert resolve_eos_token_ids(tokenizer, None) == [151645, 151644]
 
 
 def test_resolve_eos_token_ids_skips_unknown_token() -> None:
     assert resolve_eos_token_ids(_UnknownTokenizer(), 151643) == [151643]
+
+
+def test_truncate_generation_cuts_chat_continuation() -> None:
+    text = "Step 1\n#### 18\n\nassistant\nNext question..."
+    assert truncate_generation(text) == "Step 1\n#### 18"
+    assert truncate_generation("clean answer #### 7") == "clean answer #### 7"
+
+
+def test_truncate_generation_uses_earliest_marker() -> None:
+    text = "ok\n#### 1\n\nQuestion: X\nassistant\n"
+    assert truncate_generation(text) == "ok\n#### 1"
 
 
 def test_generation_stop_strings_cover_chat_continuation() -> None:

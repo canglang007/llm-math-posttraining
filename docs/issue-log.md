@@ -75,3 +75,12 @@
 - **修复**：`prompts.py` 加 `resolve_eos_token_ids`（合并模型 eos 与 ChatML eos）和 `generation_stop_strings`（`<|im_start|>`、`assistant\n`、`\n\nQuestion:`）；`evaluate_model.py` 生成时显式传合并后的 eos、pad_token_id 与 stop_strings；新增 3 个单测。
 - **验证**：本地与服务器均 31 passed；停掉旧代码跑的 200 题，用新代码重跑。修复前后同一 5 题：正确样本输出长度完全一致（558/495/1150），跑飞样本从 1753/2175 降到 569/765，总字符 6131 → 3537（-42%），pass@1 仍为 0.6（3/5）——修复只截断续写，不改变模型本身答不出的题。
 - **讲法**：评测口径的坑常在生成配置里，不在判分函数里；先做小样本冒烟并对比「输出长度 + 正确样本是否不变」，才能证明修复没有偷偷改变结论。
+
+## 2026-11-15 08:25 — 把 GPU 利用率低误判为性能 bug，两次优化都被实测否掉
+
+- **现象**：200 题 dev probe 运行时 CPU ~99%、GPU 利用率仅 15%，怀疑是 `stop_strings` 每步 decode 整段输出拖慢了 GPU，于是停掉进程做优化。
+- **根因（第一次反转）**：去掉 `stop_strings`、改用 token 级 eos + 生成后截断后，同样 5 题从 106s 变成 **145s**，GPU 平均 17%。原因是 Base 模型并不生成 `<|im_start|>` 特殊 token，token 级 eos 拦不住续写，跑飞的题又写满 512 tokens；字符串停止词反而更省算力。15% 是 batch=1 的 4bit 自回归 decode 固有形态，不是 bug。
+- **第二次尝试**：改成批量解码（`--batch-size` 可配，左填充 + 一次 generate 多条）。batch=4 下 107s → **73s**、GPU 13.8% → 24%，但 5 题 predictions **逐字不一致**，accuracy 0.6 → 0.4；左填充与 4bit 批 GEMM 的数值路径改变会让 greedy 分叉。
+- **修复**：正式评测固定 `--batch-size 1`，保留参数但标注「>1 会改变结果、禁用」；恢复 `generation_stop_strings` + token eos + `truncate_generation` 三层兜底；单测 33 passed（本地与服务器）。
+- **验证**：A/B 数据见上；`batch=1` 的 5 题输出长度 558/495/1150/559/755、accuracy 0.6，与修复前一致。
+- **讲法**：性能优化必须先定义不变量（这里是不改变任何一条 prediction），只看利用率或耗时会把评测口径优化坏；面试时主动讲「我做了两次优化都被数据否掉」比只讲成功更有说服力。

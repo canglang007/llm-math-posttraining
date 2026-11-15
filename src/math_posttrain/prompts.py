@@ -38,29 +38,48 @@ def build_chat_messages(question: str, dataset: str, few_shot: Sequence[Example]
     return messages
 
 
-CHAT_EOS_TOKEN = "<|im_end|>"
-GENERATION_STOP_STRINGS = ("<|im_start|>", "assistant\n", "\n\nQuestion:")
+CHAT_EOS_TOKENS = ("<|im_end|>", "<|im_start|>")
+POST_GENERATION_STOP_STRINGS = ("<|im_start|>", "assistant\n", "\n\nQuestion:")
 
 
 def resolve_eos_token_ids(tokenizer, base_eos_token_id=None) -> list[int]:
-    """合并模型自带 eos 与 ChatML 的 ``<|im_end|>``。
+    """合并模型自带 eos 与 ChatML 特殊 token，让停止判断留在 CUDA 侧。
 
     Qwen3-4B-Base 的 generation_config 只把 ``<|endoftext|>``（151643）当 eos，
-    用 chat template 生成时不会在 ``<|im_end|>``（151645）停下，会一直写到
-    max_new_tokens 并续写下一轮对话，污染答案抽取。
+    用 chat template 生成时不会在 ``<|im_end|>``（151645）停下；把
+    ``<|im_start|>``（151644）也并入，模型一续写下一轮对话就停。
+    全部是 token id 比较，不给解码循环加 Python 字符串开销。
     """
     ids: list[int] = []
     if isinstance(base_eos_token_id, int):
         ids.append(base_eos_token_id)
     elif isinstance(base_eos_token_id, (list, tuple)):
         ids.extend(int(value) for value in base_eos_token_id)
-    im_end = tokenizer.convert_tokens_to_ids(CHAT_EOS_TOKEN)
     unk = getattr(tokenizer, "unk_token_id", None)
-    if isinstance(im_end, int) and im_end != unk and im_end not in ids:
-        ids.append(im_end)
+    for token in CHAT_EOS_TOKENS:
+        token_id = tokenizer.convert_tokens_to_ids(token)
+        if isinstance(token_id, int) and token_id != unk and token_id not in ids:
+            ids.append(token_id)
     return ids
 
 
 def generation_stop_strings() -> list[str]:
-    """遇到对话续写或题目复述就停，避免 Base 模型跑飞后覆盖已写出的答案。"""
-    return list(GENERATION_STOP_STRINGS)
+    """交给 ``generate`` 的字符串停止词，尽早结束对话续写/题目复述。
+
+    实测 Base 模型不会生成 ``<|im_start|>`` 特殊 token，token 级 eos 拦不住
+    续写；必须用字符串停止词，否则跑飞的题会写满 max_new_tokens。
+    """
+    return list(POST_GENERATION_STOP_STRINGS)
+
+
+def truncate_generation(text: str) -> str:
+    """生成后再截断一次，兜住 stop_strings 未覆盖的边界，避免污染 ``####`` 答案。
+
+    只扫描一次字符串，不在解码循环里执行。
+    """
+    cut = len(text)
+    for marker in generation_stop_strings():
+        index = text.find(marker)
+        if index >= 0:
+            cut = min(cut, index)
+    return text[:cut].rstrip()
