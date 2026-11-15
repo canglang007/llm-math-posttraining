@@ -33,9 +33,13 @@ def extract_boxed(text: str) -> str | None:
 
 
 def extract_gsm8k_answer(text: str) -> str | None:
+    # 取第一个 #### 而不是最后一个。
+    # 官方 CoT 每题只有一个 ####，两者等价；但 SFT 后的模型答完不复述停止，
+    # 会继续写下一道题（甚至给出下一题的 ####）。取最后一个会把这题的判分
+    # 换成下一题的答案，属于静默污染，比抽取失败更危险。
     matches = _GSM8K_ANSWER.findall(text)
     if matches:
-        return _normalize_number(matches[-1])
+        return _normalize_number(matches[0])
     boxed = extract_boxed(text)
     return _normalize_number(boxed) if boxed else None
 

@@ -7,8 +7,12 @@ from math_posttrain.answers import (
 )
 
 
-def test_gsm8k_extracts_last_answer() -> None:
-    assert extract_gsm8k_answer("work #### 3 then #### 5") == "5"
+def test_gsm8k_extracts_first_answer() -> None:
+    # 2026-11-15 变更：由「取最后一个 ####」改为「取第一个」。
+    # 原因：SFT 后的模型答完不输出 <|im_end|>，会继续复述下一道题并给出它的
+    # ####。取最后一个会把这题的判分静默换成下一题答案。官方 CoT 每题只有
+    # 一个 ####，所以对 baseline 无影响（实测 200 题里 0 题出现多个 ####）。
+    assert extract_gsm8k_answer("work #### 3 then #### 5") == "3"
 
 
 def test_gsm8k_handles_commas_and_trailing_zero() -> None:
