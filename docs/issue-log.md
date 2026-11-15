@@ -100,3 +100,11 @@
 - **修复**：重新写入本机 `~/.ssh/id_ed25519.pub` 到 authorized_keys（700/600），`apt-get update -qq && apt-get install -y -qq tmux`；把恢复清单写进 handoff 第 9 节。
 - **验证**：免密登录 OK、tmux 3.4、`pytest -q` 33 passed、训练依赖全量 import + CUDA 可用、`train_sft.py --config configs/sft_qwen3_4b_12gb.yaml --dry-run` 通过（6973/500 行、seq 2048/r8）、git 工作区干净、GPU 空闲。
 - **讲法**：交付前要分清「持久盘」和「实例盘」；环境配置必须有一页可执行的恢复清单，不能依赖记忆。
+
+## 2026-11-15 14:42 — E1 pilot 跑完 200 步却在 dev eval 时 OOM，权重全丢
+
+- **现象**：pilot 200/200 步完成（46 分钟），但 `trainer.train()` 末尾 `_maybe_log_save_evaluate → trainer.evaluate → prediction_step → cross_entropy` 申请 2.14 GiB 时 CUDA OOM（当时仅剩 1.98 GiB、碎片 2.82 GiB），进程退出并标记 `SFT_PILOT_FAILED`；`experiments/sft/qwen3-4b-gsm8k-pilot200/` 为空，没有 checkpoint 可抢救。
+- **根因**：`build_trainer` 在有 dev_rows 时设 `eval_strategy="epoch"`，pilot 用 `max_steps=200` 提前结束仍触发一次 dev loss eval；eval 不走 gradient checkpointing，logits/loss 的显存峰值把 12GB 卡撑爆。训练本身没崩，是多余的评估崩了；且 `save_strategy: epoch` 使 200 步内没有任何中间 checkpoint，一次失败就全丢。
+- **修复**：pilot 配置去掉 `dev_file`（选模统一用 `evaluate_model.py` 的 dev pass@1）；改 `save_strategy: steps` + `save_steps: 50`，并在 `build_trainer` 里把 `save_steps` 传给 `TrainingArguments`；启动脚本加 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` 减碎片；新增单测校验 pilot 配置。
+- **验证**：待 v2 重跑；每 50 步会落一个 checkpoint，即使收尾再出问题也有权重可用。
+- **讲法**：长训练必须先有「可恢复点」再谈优化；eval 不是免费的，显存峰值要单独算。46 分钟白跑换来一条写进配置的工程规则。

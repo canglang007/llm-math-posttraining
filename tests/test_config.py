@@ -42,3 +42,12 @@ def test_load_config_rejects_missing_key(tmp_path: Path) -> None:
     path.write_text(VALID.replace("  seed: 42\n", ""), encoding="utf-8")
     with pytest.raises(ValueError):
         load_config(path)
+
+
+def test_pilot_config_disables_trainer_eval_and_keeps_checkpoints() -> None:
+    path = Path(__file__).resolve().parents[1] / "configs" / "sft_qwen3_4b_12gb_pilot.yaml"
+    training = load_config(path)["training"]
+    assert "dev_file" not in training
+    assert training["save_strategy"] == "steps"
+    assert training["save_steps"] == 50
+    assert training["max_steps"] == 200

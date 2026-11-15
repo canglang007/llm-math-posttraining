@@ -113,6 +113,7 @@ def build_trainer(config: dict[str, Any], model: Any, tokenizer: Any, train_rows
         lr_scheduler_type=training.get("lr_scheduler_type", "cosine"),
         logging_steps=int(training["logging_steps"]),
         save_strategy=training["save_strategy"],
+        save_steps=int(training.get("save_steps", 500)),
         save_total_limit=int(training.get("save_total_limit", 3)),
         bf16=bool(training.get("bf16", True)),
         fp16=False,
