@@ -338,6 +338,19 @@ def to_markdown(report: dict) -> str:
             lines.append(
                 f"| {entry['coverage']:.0%} | {entry['n']} | {entry['accuracy']:.4f} | {entry['min_share']:.3f} |"
             )
+        if consistency.get("operating_points"):
+            lines += [
+                "",
+                "工作点（一致度阈值 × 有效候选下限 → 覆盖率 / 准确率）：",
+                "",
+                "| 一致度 ≥ | 有效候选 ≥ | 自动回答比例 | 准确率 |",
+                "|---|---|---|---|",
+            ]
+            for point in consistency["operating_points"]:
+                lines.append(
+                    f"| {point['share_min']:.3f} | {point['valid_min']} | "
+                    f"{point['coverage']:.1%} | {point['accuracy']:.4f} |"
+                )
     return "\n".join(lines) + "\n"
 
 
@@ -404,7 +417,24 @@ def consistency_analysis(
             "accuracy": round(sum(1 for entry in subset if entry["correct"]) / len(subset), 4),
             "min_share": round(subset[-1]["share"], 3),
         })
-    return {"buckets": buckets, "selective_accuracy": selective}
+
+    # 二维工作点：一致度阈值 × 有效候选数下限，用于给「自动批改 / 转人工」选阈值
+    points = []
+    for share_threshold in (0.7, 0.75, 0.8, 0.875, 1.0):
+        for valid_min in (0, 6, 7, 8):
+            kept = [
+                entry for entry in entries
+                if entry["share"] >= share_threshold and entry["valid"] >= valid_min
+            ]
+            if not kept:
+                continue
+            points.append({
+                "share_min": share_threshold,
+                "valid_min": valid_min,
+                "coverage": round(len(kept) / len(entries), 4),
+                "accuracy": round(sum(1 for entry in kept if entry["correct"]) / len(kept), 4),
+            })
+    return {"buckets": buckets, "selective_accuracy": selective, "operating_points": points}
 
 
 def plot_curve(report: dict, path: Path, greedy: float | None = None) -> None:

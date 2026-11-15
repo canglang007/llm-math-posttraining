@@ -107,3 +107,20 @@ def test_load_step_counts_counts_calculator_annotations(tmp_path=None) -> None:
         path = Path(handle.name)
     counts = load_step_counts(path)
     assert counts == {"a": 1, "b": 0}
+
+
+def test_consistency_analysis_emits_operating_points() -> None:
+    from analyze_sampling import consistency_analysis
+
+    rows = [
+        {"id": "a", "reference": "7", "candidates": ["#### 7"] * 8},
+        {"id": "b", "reference": "7", "candidates": ["#### 9"] * 4 + ["#### 7"] * 4},
+    ]
+    result = consistency_analysis(rows, "gsm8k", 8)
+    assert result["buckets"][0]["label"] == "全票一致"
+    assert result["buckets"][0]["n"] == 1
+    points = {(point["share_min"], point["valid_min"]) for point in result["operating_points"]}
+    assert (0.8, 7) in points
+    strict = [p for p in result["operating_points"] if p["share_min"] == 1.0 and p["valid_min"] == 8][0]
+    assert strict["coverage"] == 0.5
+    assert strict["accuracy"] == 1.0
