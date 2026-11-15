@@ -1,0 +1,40 @@
+# E1 pilot：200 步快速验证「SFT 主要修复输出格式对齐」的假设。
+# 与 sft_qwen3_4b_12gb.yaml 的差异：max_seq_len 2048 -> 1024（GSM8K SFT 样本
+# p99 约 326 tokens、最长约 464 tokens），max_steps 200，独立输出目录。
+model:
+  path: /data/models/Qwen3-4B-Base
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/sft/qwen3-4b-gsm8k-pilot200
+  train_file: data/processed/sft/gsm8k-train.jsonl
+  dev_file: data/processed/sft/gsm8k-dev.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 2.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 10
+  save_strategy: epoch
+  save_total_limit: 3
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42
+  max_steps: 200
