@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+import re
 
 from .types import Example
 
@@ -72,14 +73,33 @@ def generation_stop_strings() -> list[str]:
     return list(POST_GENERATION_STOP_STRINGS)
 
 
+ANSWER_LINE_PATTERN = re.compile(r"####\s*[-+]?\d[\d,]*(?:\.\d+)?[^\n]*")
+
+
 def truncate_generation(text: str) -> str:
     """生成后再截断一次，兜住 stop_strings 未覆盖的边界，避免污染 ``####`` 答案。
 
-    只扫描一次字符串，不在解码循环里执行。
+    两层：
+
+    1. 对话标记（``<|im_start|>`` / ``assistant\\n`` / ``\\n\\nQuestion:``）——
+       模型开始扮演下一轮对话时立刻切掉；
+    2. **答案行锚定**——模型不写任何标记、直接接着编下一道题时，第二个
+       ``####`` 是唯一信号。GSM8K 官方 CoT 每题只在最后写一次 ``#### 数字``，
+       所以第一个答案行之后的所有内容都属于跑飞，必须丢掉。
+
+    第 2 层是本 bug 的根治点：``extract_gsm8k_answer`` 取第一个 ``####`` 只能
+    保住判分，prediction 文本本身仍是脏的，会一路带进采样候选、maj@k 与
+    DPO 的 chosen/rejected 配对。这里在源头把文本切干净。
+
+    只扫描字符串，不在解码循环里执行。
     """
     cut = len(text)
     for marker in generation_stop_strings():
         index = text.find(marker)
         if index >= 0:
             cut = min(cut, index)
-    return text[:cut].rstrip()
+    text = text[:cut]
+    match = ANSWER_LINE_PATTERN.search(text)
+    if match:
+        text = text[: match.end()]
+    return text.rstrip()

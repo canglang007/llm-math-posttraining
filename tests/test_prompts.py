@@ -1,3 +1,4 @@
+from math_posttrain.answers import extract_gsm8k_answer
 from math_posttrain.prompts import (
     build_chat_messages,
     build_prompt,
@@ -61,6 +62,24 @@ def test_truncate_generation_cuts_chat_continuation() -> None:
 def test_truncate_generation_uses_earliest_marker() -> None:
     text = "ok\n#### 1\n\nQuestion: X\nassistant\n"
     assert truncate_generation(text) == "ok\n#### 1"
+
+
+def test_truncate_generation_cuts_unmarked_next_question() -> None:
+    """模型不写任何对话标记、直接接着编下一道题时，第二个 ``####`` 是唯一信号。"""
+    text = (
+        "He presses 15 x 10 = 150 pounds.\n#### 450\n\n"
+        "A bakery sells 5 cakes a day for 7 days. How many cakes? #### 35"
+    )
+    truncated = truncate_generation(text)
+    assert truncated == "He presses 15 x 10 = 150 pounds.\n#### 450"
+    # 判分与文本必须同时干净：截断后只剩本题答案
+    assert extract_gsm8k_answer(truncated) == "450"
+
+
+def test_truncate_generation_keeps_answer_line_unit() -> None:
+    """答案行本身带的单位/货币符号不能被误切，否则会把 6$ 变成 6。"""
+    text = "so the total is\n#### 6$\n\nNext: 3 more apples #### 9"
+    assert truncate_generation(text) == "so the total is\n#### 6$"
 
 
 def test_generation_stop_strings_cover_chat_continuation() -> None:
