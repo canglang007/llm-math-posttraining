@@ -1,6 +1,6 @@
 # Handoff：LLM Math Post-Training
 
-更新时间：2026-11-15 07:14（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 07:46（Asia/Shanghai，UTC+08:00）
 
 本文自包含，新会话不需要任何旧项目上下文。按本文和第 11 节的阅读顺序即可继续。
 
@@ -12,6 +12,8 @@
 - 输出：分步解答 + 最终答案；
 - 核心：公开 GSM8K/MATH 数据 → 数据引擎 → SFT → 拒绝采样（RFT）→ DPO → 公开 test 评测；
 - 主张：答案验证的过滤/配比/偏好优化能提升 Qwen3-4B-Base 的数学推理 pass@1，并单独量化数据引擎的贡献。
+
+**项目动机（2026-11-15 用户确认）**：为找实习面试准备的作品，教育场景是叙事载体。第一优先是「主链路闭环 + 可复现数字 + 能单独量化数据引擎贡献的消融 + 失败分析 + 可演示 demo」，实验规模以讲得清为准，不追求刷榜或堆方法。优先级：E0→E1→E2 主线 > A1/A2 消融 > E3 DPO / E4 蒸馏 / MATH 全量扩展；时间或算力不足时砍加分项，但不能停在「只有脚本没有结果」。
 
 项目路径：
 
@@ -53,9 +55,10 @@ B：后训练数据引擎：
 
 ## 4. 当前进度
 
-已提交：
+已提交（2026-11-15 07:36 核对，`git status --short` 无输出）：
 
 ```text
+2b7484d 增加 QLoRA SFT 训练、评测与交接文档
 458d159 初始化数学推理后训练项目基础链路
 ```
 
@@ -73,25 +76,23 @@ B：后训练数据引擎：
   - MATH：6998 train / 500 dev，dev 原始文件 `data/processed/sft/math-dev.raw.jsonl`；
 - RFT/DPO 构造器在小样本验证（RFT 2 条、DPO 1 对）。
 
-未提交（截至本 handoff）：
-
-- SFT 训练层、configs、evaluate_model、本 handoff；
-- `git status` 可查看；提交时使用中文消息，不要提交 `data/`、模型或实验产物。
+状态修正：原 handoff 记为「未提交」的 SFT 训练层、configs、`evaluate_model.py`、handoff 文档，均已随 `2b7484d` 提交。后续提交仍用中文消息，不要提交 `data/`、模型或实验产物。
 
 ## 5. 当前未完成 / 阻塞
 
-- Qwen3-4B-Base 未下载到本地；训练配置里的路径是 `/data/models/Qwen3-4B-Base`。
-- GPU 服务器目前关闭；没有运行过训练。
-- Base baseline 尚未测，headroom 未知。
+- GPU 服务器已就绪（2026-11-15 07:44 起）：RTX 4070 12GB、驱动 595.112.07 / CUDA 13.2；`/data` 60G（余 39G）；工作区 `/data/llm-math-posttraining`；conda 环境 `/data/miniconda/envs/torch`（Python 3.12.13 / torch 2.10.0+cu128）；tmux 3.4 已装，用清华 pip 源装依赖。
+- 服务器上 `/data/models/Qwen3-4B` 是**后训练过的通用版**（model card 标 `base_model: Qwen/Qwen3-4B-Base`），不是 Base 权重；`Qwen/Qwen3-4B-Base` 正在 tmux 会话 `bootstrap` 中下载到 `/data/models/Qwen3-4B-Base`，日志 `/data/bootstrap.log`。
+- 尚未运行过任何训练或推理；Base baseline 未测，headroom 未知。
 - RFT/DPO 还没有真实候选轨迹（需要模型采样）。
 
 ## 6. 下一步顺序
 
-1. **review + 提交**：看 `git status`，确认 SFT 层和 handoff 后提交。
-2. **GPU 就绪后先测 baseline**：
-   - 下载 `Qwen/Qwen3-4B-Base` 到 `/data/models/Qwen3-4B-Base`；
-   - 用 `evaluate_model.py` 在 GSM8K test 200 题上跑 Base（无 adapter）；
-   - 看 pass@1、答案抽取失败率、格式错误；决定用 GSM8K 还是 MATH/更难子集。
+1. **review + 提交（已完成）**：SFT 训练层、configs、`evaluate_model.py`、handoff 已随 `2b7484d` 提交，工作区干净。
+2. **GPU 就绪后先测 baseline probe**：
+   - 确认 `bootstrap` 会话完成依赖安装、pytest 和 Base 模型下载（`tmux attach -t bootstrap` 或看 `/data/bootstrap.log`）；
+   - 用 `evaluate_model.py` 在 **dev 子集** `data/processed/sft/gsm8k-dev.raw.jsonl --limit 200` 上跑 Base（无 adapter），不碰 test；
+   - 看 pass@1、答案抽取失败率、格式错误；据此决定数据集、prompt 和训练预算；
+   - test 只在最终统一评测时对每个方法（含 Base）各评一次。
 3. **SFT**：
    - 先 `train_sft.py --config ... --dry-run`；
    - 用 12GB 或 24GB 配置训练；
@@ -130,10 +131,10 @@ python scripts/train_sft.py --config configs/sft_qwen3_4b_12gb.yaml --dry-run
 ```bash
 hf download Qwen/Qwen3-4B-Base --local-dir /data/models/Qwen3-4B-Base
 
-# baseline
+# baseline probe（dev，不碰 test）
 python scripts/evaluate_model.py \
   --model-path /data/models/Qwen3-4B-Base \
-  --data-file data/raw/gsm8k/test.jsonl \
+  --data-file data/processed/sft/gsm8k-dev.raw.jsonl \
   --dataset gsm8k --limit 200
 
 # SFT
@@ -178,6 +179,10 @@ python scripts/evaluate_model.py \
 - 12GB 配置 seq 2048/r8；24GB 配置 seq 4096/r16；12GB OOM 时先降 seq/r。
 - GSM8K/MATH 可能有预训练污染，报告必须写明；可加 GSM-Symbolic/扰动测试。
 - Base headroom 未知，先测 baseline，不要直接训练。
+- 服务器凭据不写入仓库；工作区 `/data/llm-math-posttraining`，长任务用 `tmux`（会话 `bootstrap`），日志 `/data/bootstrap.log`。pip 用清华源（`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`），HF 用 `HF_ENDPOINT=https://hf-mirror.com`；pypi.org 直连很慢，会卡在 build dependencies。
+- 12GB 卡对应 `configs/sft_qwen3_4b_12gb.yaml`（seq 2048/r8）；24GB 配置在这台服务器上不适用。
+- conda 环境 `torch` 预置 numpy 1.26.4，与 datasets 4.x 要求的 pyarrow>=21 冲突（会导致 `import transformers` 失败）；已统一升级到 numpy 2.5.4 + pyarrow 26.0.1，详见 issue-log。服务器自检除 `pytest -q` 外，还要做一次训练依赖全量 import。
+- `evaluate_model.py` 生成时已合并 `<|im_end|>` 到 eos 并加对话续写停止词；Base 的 generation_config 只认 `<|endoftext|>`（151643），不修会跑满 max_new_tokens 并续写下一轮对话，污染 `####` 答案抽取，详见 issue-log。
 
 ## 10. 不要做
 
@@ -187,6 +192,7 @@ python scripts/evaluate_model.py \
 - 不要在 Mac 上加载模型/训练；Mac 只做开发和单测。
 - 不要把 `data/`、模型权重、实验输出提交到 git。
 - 不要在没测 baseline 前直接跑 SFT。
+- 不要用 test 做 baseline probe、prompt 调试或数据集选择；这类探针一律用 dev。
 
 ## 11. 新会话阅读顺序
 

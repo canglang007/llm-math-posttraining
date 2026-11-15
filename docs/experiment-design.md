@@ -1,6 +1,6 @@
 # 实验设计
 
-更新时间：2026-11-15 01:15（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 07:46（Asia/Shanghai，UTC+08:00）
 
 ## 数据
 
@@ -10,7 +10,7 @@
 | MATH | MIT | train 7.5k / test 5k；常用 MATH500 | `\boxed{}`；sympy 等价 |
 
 - 主训练、验证、测试均来自公开数据；合成数据只用于 RFT/DPO，由公开答案验证。
-- 从 train 中切出小规模 dev 用于选 checkpoint；test 只评一次。
+- 从 train 中切出小规模 dev，用于 baseline probe 和选 checkpoint；test 只用于最终统一评测，每个方法各评一次，不参与任何选择。
 - 污染风险：GSM8K/MATH 可能被预训练见过；报告必须说明，可加 GSM-Symbolic/扰动测试。
 
 ## 实验矩阵

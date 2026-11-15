@@ -11,7 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from math_posttrain.data import load_examples, write_jsonl  # noqa: E402
 from math_posttrain.evaluation import evaluate  # noqa: E402
-from math_posttrain.prompts import build_chat_messages  # noqa: E402
+from math_posttrain.prompts import (  # noqa: E402
+    build_chat_messages,
+    generation_stop_strings,
+    resolve_eos_token_ids,
+)
 
 
 def main() -> None:
@@ -42,6 +46,8 @@ def main() -> None:
     model, tokenizer = load_eval_model(
         args.model_path, adapter=args.adapter, compute_dtype="bfloat16"
     )
+    base_eos = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
+    eos_ids = resolve_eos_token_ids(tokenizer, base_eos)
     rows = []
     for example in examples:
         messages = build_chat_messages(example.question, args.dataset)
@@ -49,7 +55,13 @@ def main() -> None:
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
         with torch.inference_mode():
             output = model.generate(
-                **inputs, max_new_tokens=args.max_new_tokens, do_sample=False
+                **inputs,
+                max_new_tokens=args.max_new_tokens,
+                do_sample=False,
+                eos_token_id=eos_ids,
+                pad_token_id=tokenizer.pad_token_id,
+                stop_strings=generation_stop_strings(),
+                tokenizer=tokenizer,
             )
         prediction = tokenizer.decode(
             output[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True

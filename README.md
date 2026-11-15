@@ -14,7 +14,7 @@
 - QLoRA SFT 训练脚本和 12GB/24GB 配置已写好，只做了 dry-run；
 - RFT/DPO 数据构造器已实现，并在小样本上验证（RFT 2 条、DPO 1 对）；
 - 数据放在 `data/`（gitignored），provenance 在 `data/raw/provenance.json`；
-- 尚未训练，尚未使用服务器。
+- 尚未训练；GPU 服务器（RTX 4070 12GB）已就绪，工作区在 `/data/llm-math-posttraining`，依赖与 Base 模型正在准备中。
 
 ## 原则
 
@@ -167,6 +167,6 @@ python scripts/evaluate_model.py \
 
 ## 下一步
 
-1. 服务器就绪后跑 Qwen3-4B-Base 的小规模 baseline（GSM8K test 200 题，greedy），确认 headroom 和答案抽取失败率；
+1. 服务器就绪后用 dev 子集（`data/processed/sft/gsm8k-dev.raw.jsonl`，200 题，greedy）跑 Qwen3-4B-Base 的 baseline probe，确认 headroom 和答案抽取失败率；test 留给最终统一评测；
 2. baseline 可解释后，实现 SFT 训练并用 dev 选 checkpoint；
 3. 再做 RFT/DPO 和失败分析。

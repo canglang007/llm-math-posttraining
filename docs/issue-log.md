@@ -1,6 +1,6 @@
 # 问题记录
 
-更新时间：2026-11-15 01:18（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 07:46（Asia/Shanghai，UTC+08:00）
 
 用途：面试时按“现象 → 根因 → 修复 → 验证 → 讲法”讲清楚一次真实决策。只追加，不删除历史。
 
@@ -43,3 +43,35 @@
 - **修复**：服务器就绪后先跑 GSM8K test 200 题 baseline，确认 pass@1 和答案抽取失败率，再决定用 GSM8K 还是 MATH/更难子集。
 - **验证**：待服务器恢复后执行。
 - **讲法**：先测基线，再设计训练；不要用想象中的弱模型做实验。
+
+## 2026-11-15 07:46 — baseline 探针原计划用 test 200 题，构成评测泄漏
+
+- **现象**：handoff/README 的 baseline pilot 写的是「GSM8K test 200 题」，且明确要用这个结果决定用 GSM8K 还是 MATH、并据此调 prompt，与「test 只用于最终评测、不参与选模或调参」的项目红线冲突。
+- **根因**：把「小样本探针」和「最终评测」混为同一批数据；赶进度时容易默认拿官方 test 当方便样本。
+- **修复**：baseline probe 改用从 train 切出的 dev（`data/processed/sft/gsm8k-dev.raw.jsonl`，200 题），test 只在最终统一评测时对每个方法各评一次（含 Base 无 adapter）；同步修正 handoff、README、章程、实验设计和本记录。
+- **验证**：待服务器环境就绪后执行 dev probe；最终评测前检查命令里的 `--data-file` 不含 `test.jsonl`。
+- **讲法**：评测隔离要落在命令和文档上，而不是只写在原则里；面试时这比多跑一个方法更能说明实验可信度。
+
+## 2026-11-15 07:46 — 服务器已有 Qwen3-4B 不是 Base 权重
+
+- **现象**：`/data/models/Qwen3-4B` 的 model card 写明 `base_model: Qwen/Qwen3-4B-Base`、Training Stage 为 Pretraining & Post-training，tokenizer 带 chat_template、generation_config 带采样参数，是后训练过的通用模型。
+- **根因**：目录名简写容易让「有 Qwen 模型」被误当成「有 Base 权重」；两者结构相同但训练阶段不同。
+- **修复**：按原设计另下载 `Qwen/Qwen3-4B-Base` 到 `/data/models/Qwen3-4B-Base`；保留现有通用模型可作对照，但不作为 E0 基线。
+- **验证**：检查 README/config/tokenizer_config/generation_config 后确认；下载完成后核对权重分片与 config。
+- **讲法**：先核对模型卡再定基线；用已后训练的模型做 SFT 主线，会把「数据带来的提升」讲成「模型自带的能力」。
+
+## 2026-11-15 07:49 — numpy 1.26 与 datasets 4.x 的 pyarrow>=21 双向冲突
+
+- **现象**：pip 装完依赖后 `import transformers` 失败，链路是 transformers → sklearn → pyarrow → `ImportError: pyarrow requires NumPy 2.0 or newer, found 1.26.4`；但 `pytest -q` 仍是 28 passed，单测没有覆盖训练依赖导入。
+- **根因**：conda 环境 `torch` 预置 numpy 1.26.4，而 datasets 4.8.5 要求 pyarrow>=21，pyarrow 21+ 又要求 numpy>=2；只降级 pyarrow 会让 datasets 因缺少 `pa.json_()` 崩溃，只升级 numpy 也仍需把 pyarrow 还原，两头必须一起改。
+- **修复**：统一升级到 `numpy>=2,<3` + `pyarrow>=21,<27`，保留 torch 2.10.0+cu128 不动；把 `numpy>=2,<3` 写进 pyproject 的 train extras 防止复现时再踩坑，并把「训练依赖全量 import」加入服务器环境自检。
+- **验证**：torch/transformers/peft/trl/datasets/accelerate/bitsandbytes/sklearn/pyarrow 全部可导入，torch↔numpy 互操作正常，CUDA 可用，pytest 28 passed。
+- **讲法**：环境自检不能只跑单测；依赖冲突要看 resolver 报出的两端约束，别只改报错最浅的那一层。
+
+## 2026-11-15 08:01 — Base 用 ChatML 生成不停止，答案被续写污染
+
+- **现象**：dev 5 题冒烟里 2 题输出跑到 1753 / 2175 字符，末尾出现 `assistant\n` 和复述的 `#### <final numeric answer>`，抽取失败；日志反复出现 `Setting pad_token_id to eos_token_id:151643`。
+- **根因**：`Qwen3-4B-Base` 的 generation_config 只把 `<|endoftext|>`（151643）当 eos，而 chat template 结束符是 `<|im_end|>`（151645）；模型写完答案后不停，继续续写下一轮对话。加上 `extract_gsm8k_answer` 取**最后一个** `####`，跑飞内容会污染判分并白烧算力。
+- **修复**：`prompts.py` 加 `resolve_eos_token_ids`（合并模型 eos 与 ChatML eos）和 `generation_stop_strings`（`<|im_start|>`、`assistant\n`、`\n\nQuestion:`）；`evaluate_model.py` 生成时显式传合并后的 eos、pad_token_id 与 stop_strings；新增 3 个单测。
+- **验证**：本地与服务器均 31 passed；停掉旧代码跑的 200 题，用新代码重跑。修复前后同一 5 题：正确样本输出长度完全一致（558/495/1150），跑飞样本从 1753/2175 降到 569/765，总字符 6131 → 3537（-42%），pass@1 仍为 0.6（3/5）——修复只截断续写，不改变模型本身答不出的题。
+- **讲法**：评测口径的坑常在生成配置里，不在判分函数里；先做小样本冒烟并对比「输出长度 + 正确样本是否不变」，才能证明修复没有偷偷改变结论。
