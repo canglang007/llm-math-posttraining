@@ -4,19 +4,36 @@
 
 这个项目与已有的 Agent 项目分开，不包含 agent、tool calling、user simulator 或 benchmark 复现。目标是展示**数据构造、SFT、RFT/DPO、评测和失败分析**的完整链路。
 
+## 主要结果（推理时验证，2026-11-15）
+
+模型冻结、不做任何训练，只加推理时计算：Qwen3-4B-Base 在 GSM8K dev 200 题上每题采样 8 条，
+把 `####` 后的答案归一化后投票。
+
+| 方法 | pass@1 | 说明 |
+|---|---|---|
+| E0 greedy | 0.770 | 基线，154/200 |
+| 单条采样（T=0.7） | 0.749 | 单条还不如 greedy |
+| **maj@3** | **0.880** | +11 点，3× token，性价比拐点 |
+| **maj@8** | **0.920** | +15 点，8× token；救回 31 题、带偏 1 题 |
+| oracle pass@8 | 0.965 | 验证信号上界，还剩 4.5 点要靠 verifier |
+
+按投票一致度做选择性预测：一致度 ≥75% 的 168 题（84%）准确率 **97.6%**，
+剩下 32 题准确率 45%–71% → 教育场景的「自动批改 / 转人工」阈值。
+
+完整的表、增益分解、失败案例与负结果见 **`docs/first-sampling-results.md`**；
+可离线打开的演示页见 `demo/index.html`。
+
 ## 当前状态
 
 - 项目骨架、数据格式、答案抽取、prompt 构造、评测和切分工具已建立；
-- 33 个单测通过（本地与服务器一致）；
-- GSM8K 已下载：train 7473 / test 1319；
-- MATH 已下载：train 7498 / test 5000（train 有 2 条无 boxed 答案被跳过）；
+- 50 个单测通过（本机需加 `--basetemp=/tmp/mpt-pytest`，沙箱会拦 pytest 的临时目录创建）；
+- GSM8K：train 7473 / test 1319；MATH：train 7498 / test 5000（2 条无 boxed 答案已跳过）；
 - SFT 数据：GSM8K 6973 train / 500 dev，MATH 6998 train / 500 dev；
-- QLoRA SFT 训练脚本和 12GB/24GB 配置已写好，只做了 dry-run；
-- RFT/DPO 数据构造器已实现，并在小样本上验证（RFT 2 条、DPO 1 对）；
-- 数据放在 `data/`（gitignored），provenance 在 `data/raw/provenance.json`；
-- GPU 服务器（RTX 4070 12GB）工作区 `/data/llm-math-posttraining`，Base 模型与依赖已装好（实例可能重启，恢复清单见 handoff 第 9 节）；
 - E0 baseline（dev 200 题，`--batch-size 1`）：pass@1 0.77、抽取失败 27（13.5%）；
-- E1 pilot SFT（200 步）已完成，adapter 与 checkpoint 在 `/data` 且已回传本地；但三层诊断确认模型退化（欠拟合），50 题评测已停止、E0/E1 对比待重训后再做；
+- 推理时验证：dev 200 × k=8 采样 52 分钟出第一张结果表（见上）；`scripts/run_sampling.py` 采样、`scripts/analyze_sampling.py` 出表与曲线、`scripts/build_demo.py` 生成 demo；
+- E1 pilot SFT（200 步）已完成但**三层诊断确认退化**（0.46 epoch 欠拟合），不能与 E0 对比；训练已从主线降为加分项（原因见 `docs/pivot-plan.md`）；
+- QLoRA SFT 训练脚本与 12GB/24GB 配置、RFT/DPO 数据构造器均已实现并在小样本验证；
+- GPU 服务器（RTX 4060 Ti 16GB）工作区 `/data/llm-math-posttraining`，`/data` 为持久卷，恢复清单见 handoff 第 9 节；
 - 调试与决策过程见 `docs/interview-debug-journal.md`（面试用）。
 
 ## 原则
@@ -41,6 +58,7 @@ src/math_posttrain/
   preferences.py  RFT / DPO records（答案验证）
   config.py       YAML 配置校验
   training.py     SFTDataset、QLoRA 加载、Trainer
+  inference_time.py 多数投票、oracle pass@k、成本估算
 
 scripts/
   prepare_data.py          下载 GSM8K/MATH（带 provenance）
@@ -49,6 +67,9 @@ scripts/
   build_preference_data.py 生成 RFT/DPO 数据
   train_sft.py             QLoRA SFT 训练
   evaluate_model.py        生成预测并算 pass@1
+  run_sampling.py          推理时验证：每题采样 k 条候选（GPU）
+  analyze_sampling.py      maj@k / oracle / 选择性预测，出表与曲线
+  build_demo.py            生成离线 demo 页（demo/index.html）
 
 configs/
   sft_qwen3_4b_24gb.yaml   seq 4096 / r16
@@ -61,6 +82,8 @@ docs/
   data-provenance.md        数据来源、许可证、切分、污染说明
   issue-log.md              问题记录（只追加）
   interview-debug-journal.md 面试用调试与决策实录（A/B 数据、反转、讲法）
+  first-sampling-results.md 推理时验证第一张结果表（主表、分解、负结果）
+  pivot-plan.md             为什么把训练移出关键路径
 ```
 
 ## 快速开始
@@ -171,6 +194,11 @@ python scripts/evaluate_model.py \
 
 ## 下一步
 
-1. 服务器就绪后用 dev 子集（`data/processed/sft/gsm8k-dev.raw.jsonl`，200 题，greedy）跑 Qwen3-4B-Base 的 baseline probe，确认 headroom 和答案抽取失败率；test 留给最终统一评测；
-2. baseline 可解释后，实现 SFT 训练并用 dev 选 checkpoint；
-3. 再做 RFT/DPO 和失败分析。
+主线（推理时验证）已闭环出表，接下来按收益排序：
+
+1. **温度对照**：T=1.0 / k=8 与 T=0.7 对比，看多样性是否抬高 oracle、是否拖低 maj；
+2. **验证器增强**：maj@8 与 oracle pass@8 之间还剩 4.5 点。免费规则（长度、出现顺序、长度加权、相对长度过滤）已实测全部无效，
+   下一步需要真正的 verifier / PRM 重排，或继续加大 k 看曲线是否饱和；
+3. **选择性预测二维化**：一致度 + 长度/格式完整度，给教育场景更细的「自动批改 / 转人工」阈值；
+4. **SFT（加分项）**：换 `QWEN_CHATML_TEMPLATE` 去掉 Qwen3 注入的空 `<think>` 块，重跑 pilot 或全量 2 epochs；
+5. **test 最终评测**：主线方法在 test 上各评一次（1319 题，只评一次）。
