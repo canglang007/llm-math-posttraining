@@ -125,3 +125,11 @@
 - **修复/决策**：停止 50 题评测（不产出无效对比）；候选方案：① 改用项目自带 `QWEN_CHATML_TEMPLATE` 去掉 think 块后重跑 pilot；② 直接跑全量 2 epochs；③ 暂停。等用户选择。
 - **验证**：待重训；E0 同批 50 题基准 0.76 / 抽取失败 9 已备好。
 - **讲法**：模型输出异常时先做「变量隔离」三层排除（生成参数 → adapter 生效 → 标签），再下「训练不足」的结论；不要凭直觉改评测脚本。
+
+## 2026-11-15 19:12 — 换卡重开后：显存同型号、/data 完好，但密码认证会间歇被拒
+
+- **现象**：新实例（RTX 4060 Ti 16GB，与之前同型号）连上后 ①`ssh` 直连首次报 `Permission denied`，重试或加 `-o PreferredAuthentications=password -o PubkeyAuthentication=no` 后成功，且同一命令偶尔仍失败；②`tmux` 不存在；③`pytest -q` 有 3 个 `FileExistsError: mkdir .../pytest-of-unknown`。
+- **根因**：①容器 sshd 的 publickey 先协商、PAM 偶发拒绝，密码认证单独指定后稳定（与代码无关）；②apt 装的 tmux 落在系统盘，实例重建即丢（第 9 节清单已记）；③本机 pytest 临时目录创建被沙箱 broker 拦成 EEXIST，不是项目 bug。
+- **修复**：SSH 包装脚本按 `PreferredAuthentications=password` + 最多 5 次重试；`apt-get install -y tmux` 恢复；pytest 统一加 `--basetemp=/tmp/mpt-pytest`。
+- **验证**：`/data/llm-math-posttraining` 在 `a00f73c`，用 `git bundle` 增量同步到 `3a21aef`；48 项单测通过（`--basetemp`）；`/data/models/Qwen3-4B-Base` 与 conda `torch` 环境（torch 2.10.0+cu128）可用；`experiments/sft/` 为空但 adapter 已在本地 `data/server-backup/sft/`，不影响推理时验证主线。
+- **讲法**：服务器凭据/包/临时目录都属于「实例盘假设」，交付脚本里要把这些当作会失效的外部依赖，而不是环境常识。
