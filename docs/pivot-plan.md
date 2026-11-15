@@ -2,8 +2,9 @@
 
 更新时间：2026-11-15 18:15（Asia/Shanghai，UTC+08:00）
 
-状态：**待确认**。本文只提出方案与已完成的基础模块，不改动
-`docs/project-charter.md`、`docs/experiment-design.md` 和 `AGENTS.md`；确认后一并更新。
+状态：**推进中**。离线失败分析与采样脚本已落地（`docs/e0-failure-analysis.md`、
+`scripts/run_sampling.py`）；本文暂不改动
+`docs/project-charter.md`、`docs/experiment-design.md` 和 `AGENTS.md`，出第一张采样结果表后一并更新。
 
 ## 为什么调
 
@@ -30,6 +31,15 @@
   `experiments/baseline/gsm8k-dev-probe200-final.jsonl`；
 - 27 个失败案例的分类、`prompts.py` 的生成停止修复、`--batch-size 1` 固定口径；
 - 面试调试实录、issue-log、全部日志与本地权重备份（`data/server-backup/`）。
+
+## 新增证据（2026-11-15 18:20）
+
+- E0 200 题里 27 个抽取失败中 **25 个是格式问题**（16 复述指令跑飞、9 带单位或货币符号、2 无标记）；
+- 宽松抽取（允许 `$6` / `3weeks`）可救回 7 题，pass@1 上界 **0.805**（正式指标仍为 0.77）；
+- 输出长度四分位准确率 **0.94 → 0.82 → 0.74 → 0.58**，越长越容易跑飞。
+
+这些数字直接支持「格式过滤 / 候选重排 / 多数投票」的推理时验证路线，
+说明可恢复空间主要来自输出格式，而不是模型不会做题。
 
 ## 实验矩阵（全部在 dev；test 只最终评一次）
 
