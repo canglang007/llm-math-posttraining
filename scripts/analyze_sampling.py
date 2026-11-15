@@ -208,6 +208,7 @@ def summarize(
                 "oracle_at_max_k": round(sum(1 for row in subset if row["oracle_at_max_k"]) / len(subset), 4),
             }
         report["stratified_by_greedy"] = strata
+    report["consistency"] = consistency_analysis(rows, dataset, max_k)
     report["per_question"] = per_question
     return report
 
@@ -256,7 +257,93 @@ def to_markdown(report: dict) -> str:
                     lines.append(
                         f"| {title} | {entry['n']} | {entry['maj_at_max_k']:.4f} | {entry['oracle_at_max_k']:.4f} |"
                     )
+    if "consistency" in report:
+        consistency = report["consistency"]
+        lines += [
+            "",
+            "## 按投票一致度的选择性预测",
+            "",
+            "| 一致度分层 | 题数 | 准确率 |",
+            "|---|---|---|",
+        ]
+        for bucket in consistency["buckets"]:
+            lines.append(f"| {bucket['label']} | {bucket['n']} | {bucket['accuracy']:.4f} |")
+        lines += [
+            "",
+            "| 自动回答比例 | 题数 | 准确率 | 该子集最低一致度 |",
+            "|---|---|---|---|",
+        ]
+        for entry in consistency["selective_accuracy"]:
+            lines.append(
+                f"| {entry['coverage']:.0%} | {entry['n']} | {entry['accuracy']:.4f} | {entry['min_share']:.3f} |"
+            )
     return "\n".join(lines) + "\n"
+
+
+def consistency_analysis(
+    rows: list[dict], dataset: str, max_k: int, coverages: tuple[float, ...] = (0.25, 0.5, 0.75, 1.0)
+) -> dict:
+    """用投票一致度做置信度，产出「选择性预测」表。
+
+    一致度 = 得票最高的答案票数 / 有效候选数。一致度越高越可信，
+    因此可以按一致度排序，只自动回答前 X% 的题目，其余交人工。
+    """
+    entries: list[dict] = []
+    for row in rows:
+        candidates = row["candidates"][:max_k]
+        values = [
+            value
+            for value in (extract_final_answer(text, dataset) for text in candidates)
+            if value is not None
+        ]
+        if not values:
+            entries.append({"share": 0.0, "correct": False, "valid": 0})
+            continue
+        counts = {}
+        for value in values:
+            counts[value] = counts.get(value, 0) + 1
+        top = max(counts.values())
+        chosen = majority_vote(candidates, dataset)
+        wrapped = f"#### {chosen}" if dataset == "gsm8k" else f"\\boxed{{{chosen}}}"
+        entries.append({
+            "share": top / len(values),
+            "correct": is_correct(wrapped, row["reference"], dataset),
+            "valid": len(values),
+        })
+
+    def bucket_label(share: float) -> str:
+        if share >= 0.999:
+            return "全票一致"
+        if share >= 0.75:
+            return "75-99% 一致"
+        if share >= 0.5:
+            return "50-74% 一致"
+        return "低于 50% 一致"
+
+    order = ["全票一致", "75-99% 一致", "50-74% 一致", "低于 50% 一致"]
+    buckets = []
+    for label in order:
+        subset = [entry for entry in entries if bucket_label(entry["share"]) == label]
+        if not subset:
+            continue
+        buckets.append({
+            "label": label,
+            "n": len(subset),
+            "accuracy": round(sum(1 for entry in subset if entry["correct"]) / len(subset), 4),
+        })
+
+    ranked = sorted(entries, key=lambda entry: -entry["share"])
+    selective = []
+    for coverage in coverages:
+        take = max(1, int(len(ranked) * coverage))
+        subset = ranked[:take]
+        selective.append({
+            "coverage": coverage,
+            "n": take,
+            "accuracy": round(sum(1 for entry in subset if entry["correct"]) / len(subset), 4),
+            "min_share": round(subset[-1]["share"], 3),
+        })
+    return {"buckets": buckets, "selective_accuracy": selective}
 
 
 def plot_curve(report: dict, path: Path, greedy: float | None = None) -> None:
