@@ -92,6 +92,7 @@ def summarize(
         k: {"maj": 0, "empty": 0} for k in range(1, max_k + 1)
     }
     valid_counts: list[int] = []
+    distinct_counts: list[int] = []
     candidate_total = 0
     candidate_invalid = 0
     lengths: list[int] = []
@@ -112,6 +113,13 @@ def summarize(
             elif vote_is_correct(kept, reference, dataset):
                 filtered_curve[k]["maj"] += 1
         valid_counts.append(sum(1 for text in candidates if extract_final_answer(text, dataset)))
+        distinct_counts.append(
+            len({
+                value
+                for value in (extract_final_answer(text, dataset) for text in candidates)
+                if value is not None
+            })
+        )
         candidate_total += len(candidates)
         candidate_invalid += sum(
             1 for text in candidates if extract_final_answer(text, dataset) is None
@@ -158,6 +166,7 @@ def summarize(
         "any_valid_coverage": round(
             sum(1 for count in valid_counts if count > 0) / max(1, total_questions), 4
         ),
+        "avg_distinct_answers": round(sum(distinct_counts) / max(1, total_questions), 2),
         "candidate_extraction_failure_rate": round(candidate_invalid / max(1, candidate_total), 4),
         "avg_candidate_chars": round(sum(lengths) / max(1, len(lengths)), 1),
         "curve": curve,
@@ -185,6 +194,20 @@ def summarize(
             "greedy_wrong_recall_of_oracle": round(oracle_on_greedy_wrong / max(1, greedy_wrong), 4),
             "oracle_reachable_on_greedy_wrong": oracle_on_greedy_wrong,
         }
+        strata = {}
+        for label, keep in (
+            ("greedy_right", lambda flag: flag),
+            ("greedy_wrong", lambda flag: not flag),
+        ):
+            subset = [row for row in paired if keep(row["greedy_correct"])]
+            if not subset:
+                continue
+            strata[label] = {
+                "n": len(subset),
+                "maj_at_max_k": round(sum(1 for row in subset if row["maj_at_max_k"]) / len(subset), 4),
+                "oracle_at_max_k": round(sum(1 for row in subset if row["oracle_at_max_k"]) / len(subset), 4),
+            }
+        report["stratified_by_greedy"] = strata
     report["per_question"] = per_question
     return report
 
@@ -195,6 +218,7 @@ def to_markdown(report: dict) -> str:
         "",
         f"- 题目数：{report['questions']}，最大 k：{report['max_k']}，数据集：{report['dataset']}",
         f"- 平均有效候选：{report['avg_valid_candidates']} / 题；至少一条可抽取答案的题目占比：{report['any_valid_coverage']:.2%}",
+        f"- 每题平均不同答案数（体现采样多样性）：{report['avg_distinct_answers']}",
         f"- 候选级抽取失败率：{report['candidate_extraction_failure_rate']:.2%}",
         f"- 候选平均字符数：{report['avg_candidate_chars']}",
         "",
@@ -220,6 +244,18 @@ def to_markdown(report: dict) -> str:
             f"- maj@k = {b['maj_at_max_k']:.4f}；救回 {b['rescued_by_vote']} 题，带偏 {b['hurt_by_vote']} 题，净增 {b['net_gain_questions']:+d} 题",
             f"- greedy 做错的 {b['oracle_reachable_on_greedy_wrong']} 题里，候选池至少有一条正确（召回 {b['greedy_wrong_recall_of_oracle']:.2%}），这是验证信号的天花板",
         ]
+        if "stratified_by_greedy" in report:
+            lines += [
+                "",
+                "| E0 greedy 分层 | 题数 | maj@k | oracle pass@k |",
+                "|---|---|---|---|",
+            ]
+            for label, title in (("greedy_right", "E0 做对"), ("greedy_wrong", "E0 做错")):
+                entry = report["stratified_by_greedy"].get(label)
+                if entry:
+                    lines.append(
+                        f"| {title} | {entry['n']} | {entry['maj_at_max_k']:.4f} | {entry['oracle_at_max_k']:.4f} |"
+                    )
     return "\n".join(lines) + "\n"
 
 
