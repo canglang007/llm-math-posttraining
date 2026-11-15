@@ -33,8 +33,13 @@
 | 08:40 | probe 跑到 20/200 | 后台继续 |
 | 09:26 | 200 题 dev baseline 完成 | pass@1 0.77，抽取失败 27，见下节 |
 | 13:43 | 服务器重启，host/port 更换 | `/data` 全部完好；重配免密与 tmux，三项自检通过 |
+| 13:48 | 启动全量 E1 SFT | 实测 13.8 s/步 × 872 步 ≈ 3h20m，改跑 200 步 pilot |
+| 14:42 | pilot v1 跑满 200 步后 Trainer dev eval OOM | 权重全丢，定位到多余的 epoch 末 eval |
+| 15:33 | pilot v2 修复后重跑完成 | adapter 66MB + 4 个 checkpoint，train_loss ≈ 0.490 |
+| 15:34 | E1 dev 前 50 题评测启动 | 与 E0 同批题（E0：0.76 / 抽取失败 9） |
+| 15:47 | 服务器实例再次断开 | 评测未完成；产物在 `/data` 安全，待新连接重跑 |
 
-## 六个可讲的决策
+## 七个可讲的决策
 
 ### 1. baseline 不能用 test（评测泄漏）
 
@@ -80,6 +85,13 @@
 - **原因**：左填充与 4bit 批 GEMM 的数值路径变化会让 greedy 解码分叉。
 - **结论**：正式评测固定 `--batch-size 1`；参数保留但标注「>1 会改变结果、禁用」。若真要提速，必须把 batch=4 定成所有实验统一的新口径并重跑全部基线，收益却只有三成。
 - **讲法**：能复现的方法间对比，比一张好看的利用率图重要。
+
+### 7. 长训练必须先有「可恢复点」
+
+- **现象**：pilot 200 步跑满 46 分钟，收尾时 Trainer 的 epoch 末 dev eval 在 `cross_entropy` 申请 2.14 GiB → CUDA OOM；进程退出，而 `save_strategy: epoch` 让 200 步内没有任何中间 checkpoint，权重全丢。
+- **根因**：eval 不走 gradient checkpointing，显存峰值被低估；把「保存」和「评估」都绑在 epoch 上，短跑（`max_steps=200`）等于既没存档又多算一次评估。
+- **修复**：pilot 去掉 `dev_file`（选模统一用 `evaluate_model.py` 的 dev pass@1）、改 `save_strategy: steps` + `save_steps: 50`、开 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`；重跑后每 50 步落盘，15:33 正常收尾。
+- **讲法**：先保证「失败可恢复」再谈优化；46 分钟白跑换来的规则要写进配置和单测，不是记在脑子里。
 
 ## 关键数字对照（同一 dev 5 题，greedy，max_new_tokens=512）
 

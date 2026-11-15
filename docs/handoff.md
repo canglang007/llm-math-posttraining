@@ -1,6 +1,6 @@
 # Handoff：LLM Math Post-Training
 
-更新时间：2026-11-15 09:28（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 15:47（Asia/Shanghai，UTC+08:00）
 
 本文自包含，新会话不需要任何旧项目上下文。按本文和第 11 节的阅读顺序即可继续。
 
@@ -71,26 +71,27 @@ B：后训练数据引擎：
   - MATH：6998 train / 500 dev，dev 原始文件 `data/processed/sft/math-dev.raw.jsonl`；
 - RFT/DPO 构造器在小样本验证（RFT 2 条、DPO 1 对）；
 - E0 baseline（dev 200 题，batch=1 正式口径，2026-11-15 09:26）：pass@1 **0.77**（154/200）、抽取成功但错 19、抽取失败 27（13.5%）、空输出 0；预测 `experiments/baseline/gsm8k-dev-probe200-final.jsonl`，日志 `/data/probe-v3.log`；
-- 面试用调试与决策实录 `docs/interview-debug-journal.md`（时间线、A/B 数字、两次优化反转、1 分钟讲法、Q&A）。
+- 面试用调试与决策实录 `docs/interview-debug-journal.md`（时间线、A/B 数字、两次优化反转、1 分钟讲法、Q&A，已补第 7 个决策「长训练可恢复点」）；
+- E1 pilot SFT（200 步 / seq 1024 / seed 42，2026-11-15 15:33 完成）：`train_loss ≈ 0.490`，adapter 66MB 与 `checkpoint-50/100/150/200` 在 `experiments/sft/qwen3-4b-gsm8k-pilot200/`；配置 `configs/sft_qwen3_4b_12gb_pilot.yaml`，日志 `/data/sft-pilot-v2.log`；
+- E0 同批前 50 题基准：0.76（38/50）、抽取失败 9；E1 同批 50 题评测 15:34 启动，因服务器断开未完成。
 
 状态修正：原 handoff 记为「未提交」的 SFT 训练层、configs、`evaluate_model.py`、handoff 文档，均已随 `2b7484d` 提交。后续提交仍用中文消息，不要提交 `data/`、模型或实验产物。
 
 ## 5. 当前未完成 / 阻塞
 
-- GPU 服务器已就绪（2026-11-15 07:44 起）：RTX 4070 12GB、驱动 595.112.07 / CUDA 13.2；`/data` 60G（余 39G）；工作区 `/data/llm-math-posttraining`；conda 环境 `/data/miniconda/envs/torch`（Python 3.12.13 / torch 2.10.0+cu128）；tmux 3.4 已装，用清华 pip 源装依赖。
+- **服务器当前离线**（2026-11-15 15:47 起端口超时；host/port/密码会随实例更换）。`/data` 为持久卷，重启后内容不丢；恢复清单见第 9 节。硬件 RTX 4070 12GB / 驱动 595.112.07 / CUDA 13.2，工作区 `/data/llm-math-posttraining`，conda 环境 `/data/miniconda/envs/torch`。
 - `/data/models/Qwen3-4B-Base` 已下载完成；另有后训练过的通用版 `Qwen3-4B`（不作 E0 基线）。
-- **训练尚未开始**；E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；E1 收益需拆成「格式对齐」与「推理提升」两部分。
-- RFT/DPO 还没有真实候选轨迹（需要模型采样）。
+- E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；**E1 pilot 训练已完成**，但同批 50 题评测因实例断开未完成，需重跑；E1 收益要拆成「格式对齐」与「推理提升」两部分。
+- 全量 E1（2 epochs，约 3h20m）尚未跑；RFT/DPO 还没有真实候选轨迹（需要模型采样）。
 
 ## 6. 下一步顺序
 
 1. **review + 提交（已完成）**：SFT 训练层、configs、`evaluate_model.py`、handoff 已随 `2b7484d` 提交，工作区干净。
 2. **baseline probe（已完成，2026-11-15 09:26）**：dev 200 题、batch=1，pass@1 0.77 / 抽取失败 27；失败分析见 `docs/interview-debug-journal.md`。dev 只是探针，test 仍只在最终统一评测时对每个方法（含 Base）各评一次。
-3. **SFT**：
-   - 先 `train_sft.py --config configs/sft_qwen3_4b_12gb.yaml --dry-run`；
-   - 用 12GB 配置训练（24GB 配置在这台机上不适用）；
-   - 每个 epoch checkpoint 用 `evaluate_model.py` 在 dev.raw 上算 pass@1 选最好，同时看抽取失败率是否下降（E1 的主要增益可能来自格式对齐）；
-   - test 只评一次。
+3. **SFT / E1**：
+   - pilot 已完成（200 步，见第 4 节）；全量 2 epochs 约 3h20m，视 pilot 结果再决定是否跑；
+   - **下一步（服务器回来后）**：用 `evaluate_model.py --adapter experiments/sft/qwen3-4b-gsm8k-pilot200 --data-file data/processed/sft/gsm8k-dev.raw.jsonl --limit 50 --batch-size 1` 重跑 E1 同批 50 题，与 E0 的 0.76 / 抽取失败 9 对比，重点看抽取失败率；
+   - 正式对比表仍用 test，每个方法各评一次。
 4. **RFT/DPO**：从 SFT 采样候选，用公开答案验证；生成 RFT/DPO 数据；做 A1/A2 消融。
 5. **失败分析 + demo + 报告**。
 
@@ -100,7 +101,7 @@ B：后训练数据引擎：
 
 ```bash
 cd /Users/canglang007/Desktop/work/me/job/project/llm-math-posttraining
-/opt/anaconda3/bin/python3 -m pytest -q     # 28 passed
+/opt/anaconda3/bin/python3 -m pytest -q     # 34 passed
 ```
 
 重建数据（换机器时；`data/` 被 gitignore）：

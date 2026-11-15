@@ -14,8 +14,9 @@
 - QLoRA SFT 训练脚本和 12GB/24GB 配置已写好，只做了 dry-run；
 - RFT/DPO 数据构造器已实现，并在小样本上验证（RFT 2 条、DPO 1 对）；
 - 数据放在 `data/`（gitignored），provenance 在 `data/raw/provenance.json`；
-- GPU 服务器（RTX 4070 12GB）已就绪，工作区 `/data/llm-math-posttraining`，Base 模型与依赖已装好；
-- E0 baseline（dev 200 题，`--batch-size 1`）：pass@1 0.77、抽取失败 27（13.5%）；训练尚未开始；
+- GPU 服务器（RTX 4070 12GB）工作区 `/data/llm-math-posttraining`，Base 模型与依赖已装好（实例可能重启，恢复清单见 handoff 第 9 节）；
+- E0 baseline（dev 200 题，`--batch-size 1`）：pass@1 0.77、抽取失败 27（13.5%）；
+- E1 pilot SFT（200 步）已完成，adapter 与 4 个 checkpoint 在 `/data`；E1 同批 50 题评测待重跑（服务器 15:47 断开）；
 - 调试与决策过程见 `docs/interview-debug-journal.md`（面试用）。
 
 ## 原则

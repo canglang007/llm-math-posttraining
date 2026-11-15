@@ -106,5 +106,13 @@
 - **现象**：pilot 200/200 步完成（46 分钟），但 `trainer.train()` 末尾 `_maybe_log_save_evaluate → trainer.evaluate → prediction_step → cross_entropy` 申请 2.14 GiB 时 CUDA OOM（当时仅剩 1.98 GiB、碎片 2.82 GiB），进程退出并标记 `SFT_PILOT_FAILED`；`experiments/sft/qwen3-4b-gsm8k-pilot200/` 为空，没有 checkpoint 可抢救。
 - **根因**：`build_trainer` 在有 dev_rows 时设 `eval_strategy="epoch"`，pilot 用 `max_steps=200` 提前结束仍触发一次 dev loss eval；eval 不走 gradient checkpointing，logits/loss 的显存峰值把 12GB 卡撑爆。训练本身没崩，是多余的评估崩了；且 `save_strategy: epoch` 使 200 步内没有任何中间 checkpoint，一次失败就全丢。
 - **修复**：pilot 配置去掉 `dev_file`（选模统一用 `evaluate_model.py` 的 dev pass@1）；改 `save_strategy: steps` + `save_steps: 50`，并在 `build_trainer` 里把 `save_steps` 传给 `TrainingArguments`；启动脚本加 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` 减碎片；新增单测校验 pilot 配置。
-- **验证**：待 v2 重跑；每 50 步会落一个 checkpoint，即使收尾再出问题也有权重可用。
+- **验证**：v2 于 14:46:50 重跑，15:33:37 `SFT_PILOT_OK`（46 分钟，`train_loss ≈ 0.490`），落盘 `checkpoint-50/100/150/200` 与最终 adapter（66MB），loss 日志正常；关闭 Trainer eval 后未再 OOM。
 - **讲法**：长训练必须先有「可恢复点」再谈优化；eval 不是免费的，显存峰值要单独算。46 分钟白跑换来一条写进配置的工程规则。
+
+## 2026-11-15 15:47 — E1 pilot 评测跑到一半时服务器实例断开
+
+- **现象**：15:34 启动 dev 前 50 题 E1 评测，模型加载后进入生成；15:42 监视连接被远程关闭，随后新旧 host 端口均超时、DNS 正常，判断实例再次关机或回收，评测未完成。
+- **根因**：按量实例的生命周期，不是代码或数据问题；`/data` 是持久卷（09:41 与 13:43 两次重启已验证不丢）。
+- **修复**：等新连接后按第 9 节恢复免密与 tmux，重跑 50 题评测；训练产物与 4 个 checkpoint 无需重训。
+- **验证**：待新实例；E0 同批 50 题基准 0.76 / 抽取失败 9 已算好；adapter 与日志均在 `/data`，git 到 `040c2e3`。
+- **讲法**：长实验要把「可恢复点」落在持久盘上；评测可以重跑，46 分钟的训练不该重跑。
