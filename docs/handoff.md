@@ -1,6 +1,6 @@
 # Handoff：LLM Math Post-Training
 
-更新时间：2026-11-15 15:53（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 20:20（Asia/Shanghai，UTC+08:00）
 
 本文自包含，新会话不需要任何旧项目上下文。按本文和第 11 节的阅读顺序即可继续。
 
@@ -74,27 +74,36 @@ B：后训练数据引擎：
 - 面试用调试与决策实录 `docs/interview-debug-journal.md`（时间线、A/B 数字、两次优化反转、1 分钟讲法、Q&A，已补第 7 个决策「长训练可恢复点」）；
 - E1 pilot SFT（200 步 / seq 1024 / seed 42，2026-11-15 15:33 完成）：`train_loss ≈ 0.490`，adapter 66MB 与 `checkpoint-50/100/150/200` 在 `experiments/sft/qwen3-4b-gsm8k-pilot200/`；配置 `configs/sft_qwen3_4b_12gb_pilot.yaml`，日志 `/data/sft-pilot-v2.log`；
 - E0 同批前 50 题基准：0.76（38/50）、抽取失败 9；E1 同批 50 题评测 15:34 启动，因服务器断开未完成。
+- **推理时验证主线已有第一张正式结果表（2026-11-15 20:08 采样完成，20:15 出表）**：模型冻结不训练，Qwen3-4B-Base 在 dev 200 题上 k=8、T=0.7 采样 52 分钟，
+  greedy 0.770 → **maj@8 0.920**（184/200），救回 31 题、带偏 1 题；maj@3 已到 0.880，oracle pass@8 = 0.965（验证器天花板 +4.5 点）；
+  按投票一致度做选择性预测：84% 题目一致度 ≥75%、准确率 97.6%，剩余 16% 准确率仅 45%–71%，可转人工。
+  详见 `docs/first-sampling-results.md`；候选 `experiments/sampling/gsm8k-dev-probe200-k8-t0.7.jsonl`，报告与图 `experiments/analysis/sampling-k8-t0.7.{json,md,png}`。
+- 新增离线分析链路（Mac 可跑，不加载模型）：`scripts/analyze_sampling.py` + `tests/test_analyze_sampling.py`（含 maj@k / oracle / Wilson 区间 / E0 分层 / 一致度选择性预测 / 长度过滤对照 / 曲线 PNG）。
+- 全项目单测 48 项通过（注意本机需加 `--basetemp=/tmp/mpt-pytest`，否则沙箱会把 pytest 临时目录 mkdir 拦成 EEXIST）。
 
 状态修正：原 handoff 记为「未提交」的 SFT 训练层、configs、`evaluate_model.py`、handoff 文档，均已随 `2b7484d` 提交。后续提交仍用中文消息，不要提交 `data/`、模型或实验产物。
 
 ## 5. 当前未完成 / 阻塞
 
-- **服务器当前离线**：账户余额用完导致实例被释放，平台在 2026-11-15 **15:43 保存了镜像**（在 15:33 训练完成之后）；新旧 host 端口均超时，host/port/密码会随新实例更换。`/data` 为持久卷（两次重启已验证不丢），恢复清单见第 9 节。硬件 RTX 4070 12GB / 驱动 595.112.07 / CUDA 13.2，工作区 `/data/llm-math-posttraining`，conda 环境 `/data/miniconda/envs/torch`。
-- `/data/models/Qwen3-4B-Base` 已下载完成；另有后训练过的通用版 `Qwen3-4B`（不作 E0 基线）。
-- E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；**E1 pilot 训练完成但模型退化不可用**（200 步欠拟合，输出以乱码开头、跑满 512 tokens 不生成 `<|im_end|>`），同批 50 题评测已停止，不能用于 E0/E1 对比；下一步见第 6 节。
+- **服务器在线（2026-11-15 19:07 换卡重开）**：RTX 4060 Ti **16GB**（与之前同型号）、驱动随镜像、96 核 / 125G 内存；`/data` 持久卷 89G（余 58G）内容完好，conda 环境 `/data/miniconda/envs/torch`（torch 2.10.0+cu128）可用，代码已用 `git bundle` 增量同步到 `3a21aef` 之后。system 盘上的免密公钥与 tmux 会随实例重建丢失，恢复清单见第 9 节。凭据不写入仓库，由用户当次提供。
+- `/data/models/Qwen3-4B-Base` 与后训练版 `Qwen3-4B` 都在；**`experiments/sft/` 在本次重建后为空**，E1 pilot 的 adapter/checkpoint 只剩本地备份 `data/server-backup/sft/`（413M），需要时可回传。
+- E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；**E1 pilot 训练完成但模型退化不可用**（200 步欠拟合，输出以乱码开头、跑满 512 tokens 不生成 `<|im_end|>`），同批 50 题评测已停止，不能用于 E0/E1 对比。
+- 推理时验证主线**不依赖任何训练产物**，已在第一张表上闭环；T=1.0 的温度对照采样于 2026-11-15 20:10 启动（同为 200×k=8，约 52 分钟），用于检验「提高多样性能否抬高 oracle、是否拖低 maj」。
 - 全量 E1（2 epochs，约 3h20m）尚未跑；RFT/DPO 还没有真实候选轨迹（需要模型采样）。
 
 ## 6. 下一步顺序
 
-1. **review + 提交（已完成）**：SFT 训练层、configs、`evaluate_model.py`、handoff 已随 `2b7484d` 提交，工作区干净。
-2. **baseline probe（已完成，2026-11-15 09:26）**：dev 200 题、batch=1，pass@1 0.77 / 抽取失败 27；失败分析见 `docs/interview-debug-journal.md`。dev 只是探针，test 仍只在最终统一评测时对每个方法（含 Base）各评一次。
-3. **SFT / E1**：
-   - pilot（200 步）已完成但**退化不可用**：三层诊断（停止方式 A/B、adapter 开关、标签核对）排除了评测 bug 与加载 bug，判断为 200 步（0.46 epoch）欠拟合；详见 issue-log 17:40 条；
-   - Qwen3 自带 chat_template 会在 assistant 内容前注入 `<think>\n\n</think>\n\n`，可考虑改用项目自带 `QWEN_CHATML_TEMPLATE` 去掉 think 块；
-   - **下一步待定**：① 换模板重跑 200 步 pilot（约 46 分钟）；② 直接跑全量 2 epochs（约 3h20m）；③ 暂停。选定后重训，再做 E1 同批 50 题对比（E0 基准 0.76 / 抽取失败 9）；
-   - 正式对比表仍用 test，每个方法各评一次。
-4. **RFT/DPO**：从 SFT 采样候选，用公开答案验证；生成 RFT/DPO 数据；做 A1/A2 消融。
-5. **失败分析 + demo + 报告**。
+**主线已切到推理时验证**（见 `docs/pivot-plan.md`），训练降为加分项；下面的顺序按此排列。
+
+1. **推理时验证第一张表（已完成，2026-11-15 20:15）**：greedy 0.770 → maj@8 0.920（+30 题）、oracle pass@8 0.965、一致度选择性预测 84% / 97.6%；见 `docs/first-sampling-results.md`。
+2. **温度对照（进行中）**：T=1.0、k=8、同 200 题，与 T=0.7 对比 oracle（多样性是否升高）与 maj（投票是否被带偏）；跑完用同一条 `analyze_sampling.py` 命令出第二张表，两行合成温度消融。
+3. **验证器增强（下一步的主攻方向）**：maj@8 与 oracle pass@8 之间还有 4.5 个点，且 8 道题「池里有正确答案但投票投错」。
+   - 可做的低成本方案：候选重排（按 CoT 长度/格式完整度）、答案一致性以外的信号（`####` 前的推理长度、是否出现 `<<>>` 计算链）、平票规则显式化；
+   - 目标是补上这 4.5 点，并给出「验证器 vs 投票」的消融行。
+4. **选择性预测（已有结果，可扩展）**：当前用投票一致度分 4 桶；可加「一致度 + 长度」的二维分桶，给教育场景的「自动批改 / 转人工」阈值。
+5. **SFT / E1（降为加分项）**：pilot 200 步欠拟合不可用；若要补训练硬证据，优先换 `QWEN_CHATML_TEMPLATE`（去掉注入的 `<think>` 空块）重跑 pilot（约 46 分钟）或直接全量 2 epochs（约 3h20m）。成功就加一行 E1，失败不动主表。
+6. **RFT/DPO**：候选已可由采样产出，若做 RFT 可直接复用 `experiments/sampling/` 的候选并用公开答案验证。
+7. **失败分析 + demo + 报告**：以 `docs/first-sampling-results.md` 为骨架扩展。
 
 ## 7. 关键命令
 
@@ -102,7 +111,7 @@ B：后训练数据引擎：
 
 ```bash
 cd /Users/canglang007/Desktop/work/me/job/project/llm-math-posttraining
-/opt/anaconda3/bin/python3 -m pytest -q     # 34 passed
+/opt/anaconda3/bin/python3 -m pytest -q --basetemp=/tmp/mpt-pytest     # 48 passed
 ```
 
 重建数据（换机器时；`data/` 被 gitignore）：

@@ -1,10 +1,11 @@
 # 方向调整方案：从「后训练」到「推理时验证」
 
-更新时间：2026-11-15 18:15（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 20:25（Asia/Shanghai，UTC+08:00）
 
-状态：**推进中**。离线失败分析与采样脚本已落地（`docs/e0-failure-analysis.md`、
-`scripts/run_sampling.py`）；本文暂不改动
-`docs/project-charter.md`、`docs/experiment-design.md` 和 `AGENTS.md`，出第一张采样结果表后一并更新。
+状态：**主结果已出**（2026-11-15 20:15）。dev 200 题 × k=8 × T=0.7 采样 52 分钟，
+greedy 0.770 → maj@8 **0.920**（+30 题），oracle pass@8 0.965，一致度 ≥75% 的 84% 题目准确率 97.6%。
+详见 `docs/first-sampling-results.md`。`AGENTS.md` 的合成数据措辞已同步改为「RFT/DPO 或推理时聚合」；
+`docs/project-charter.md`、`docs/experiment-design.md` 待正式收尾时统一改。
 
 ## 为什么调
 
