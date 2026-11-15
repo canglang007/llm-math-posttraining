@@ -138,8 +138,8 @@ def summarize(
             "maj@k_ci95": [round(low, 4), round(high, 4)],
             "maj@k_hits": maj_hits,
             "oracle_pass@k": round(oracle_hits / total_questions, 4),
-            "filtered_maj@k": round(filtered_curve[k]["maj"] / total_questions, 4),
-            "filtered_empty": filtered_curve[k]["empty"],
+            "length_filtered_maj@k": round(filtered_curve[k]["maj"] / total_questions, 4),
+            "length_filtered_empty": filtered_curve[k]["empty"],
             "verification_headroom": round((oracle_hits - maj_hits) / total_questions, 4),
         }
         if avg_tokens is not None:
@@ -155,6 +155,9 @@ def summarize(
         "length_filter_max_chars": max_chars,
         "avg_candidates_per_question": round(candidate_total / max(1, total_questions), 2),
         "avg_valid_candidates": round(sum(valid_counts) / max(1, total_questions), 2),
+        "any_valid_coverage": round(
+            sum(1 for count in valid_counts if count > 0) / max(1, total_questions), 4
+        ),
         "candidate_extraction_failure_rate": round(candidate_invalid / max(1, candidate_total), 4),
         "avg_candidate_chars": round(sum(lengths) / max(1, len(lengths)), 1),
         "curve": curve,
@@ -191,11 +194,11 @@ def to_markdown(report: dict) -> str:
         "# 推理时验证结果表",
         "",
         f"- 题目数：{report['questions']}，最大 k：{report['max_k']}，数据集：{report['dataset']}",
-        f"- 平均有效候选：{report['avg_valid_candidates']} / 题",
+        f"- 平均有效候选：{report['avg_valid_candidates']} / 题；至少一条可抽取答案的题目占比：{report['any_valid_coverage']:.2%}",
         f"- 候选级抽取失败率：{report['candidate_extraction_failure_rate']:.2%}",
         f"- 候选平均字符数：{report['avg_candidate_chars']}",
         "",
-        "| k | 单条采样 pass@1 | maj@k | maj@k 95% CI | oracle pass@k | 格式过滤后 maj@k | 验证余量 | 估计 tokens/题 |",
+        f"| k | 单条采样 pass@1 | maj@k | maj@k 95% CI | oracle pass@k | 长度过滤(<{report['length_filter_max_chars']})后 maj@k | 验证余量 | 估计 tokens/题 |",
         "|---|---|---|---|---|---|---|---|",
     ]
     for entry in report["curve"]:
@@ -204,7 +207,7 @@ def to_markdown(report: dict) -> str:
         lines.append(
             f"| {entry['k']} | {entry['sampled_pass@1']:.4f} | {entry['maj@k']:.4f} | "
             f"[{low:.3f}, {high:.3f}] | {entry['oracle_pass@k']:.4f} | "
-            f"{entry['filtered_maj@k']:.4f} | {entry['verification_headroom']:+.4f} | "
+            f"{entry['length_filtered_maj@k']:.4f} | {entry['verification_headroom']:+.4f} | "
             f"{tokens if tokens is not None else '-'} |"
         )
     if "baseline_comparison" in report:
@@ -218,6 +221,39 @@ def to_markdown(report: dict) -> str:
             f"- greedy 做错的 {b['oracle_reachable_on_greedy_wrong']} 题里，候选池至少有一条正确（召回 {b['greedy_wrong_recall_of_oracle']:.2%}），这是验证信号的天花板",
         ]
     return "\n".join(lines) + "\n"
+
+
+def plot_curve(report: dict, path: Path, greedy: float | None = None) -> None:
+    """把 maj@k / oracle pass@k 随 k 的变化画成图，便于直接贴进汇报。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    ks = [entry["k"] for entry in report["curve"]]
+    maj = [entry["maj@k"] for entry in report["curve"]]
+    oracle = [entry["oracle_pass@k"] for entry in report["curve"]]
+    sampled = [entry["sampled_pass@1"] for entry in report["curve"]]
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.0), dpi=160)
+    ax.plot(ks, maj, marker="o", label="maj@k (majority vote)", color="#c0392b")
+    ax.plot(ks, oracle, marker="^", linestyle="--", label="oracle pass@k (upper bound)", color="#7f8c8d")
+    ax.plot(ks, sampled, marker="s", linestyle=":", label="single-sample pass@1", color="#2980b9")
+    if greedy is not None:
+        ax.axhline(greedy, linestyle="-.", linewidth=1.2, color="#27ae60",
+                   label=f"greedy pass@1 = {greedy:.3f}")
+    ax.set_xlabel("sampled candidates per question (k)")
+    ax.set_ylabel("accuracy on dev")
+    ax.set_ylim(0, 1.02)
+    ax.set_xticks(ks)
+    ax.grid(alpha=0.25)
+    ax.legend(fontsize=8, loc="lower right")
+    ax.set_title(f"test-time compute vs accuracy (n={report['questions']}, T={report.get('temperature', '-')})",
+                 fontsize=9)
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path)
+    plt.close(fig)
 
 
 def load_baseline(path: Path, dataset: str) -> dict[str, bool]:
@@ -239,6 +275,8 @@ def main() -> None:
     parser.add_argument("--max-k", type=int, default=None)
     parser.add_argument("--length-filter", type=int, default=1000)
     parser.add_argument("--avg-tokens", type=float, default=None)
+    parser.add_argument("--temperature", type=float, default=None)
+    parser.add_argument("--plot", action="store_true")
     parser.add_argument("--output", type=Path, default=Path("experiments/analysis/sampling-report.json"))
     args = parser.parse_args()
 
@@ -254,10 +292,15 @@ def main() -> None:
         max_chars=args.length_filter,
         avg_tokens=args.avg_tokens,
     )
+    if args.temperature is not None:
+        report["temperature"] = args.temperature
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     markdown_path = args.output.with_suffix(".md")
     markdown_path.write_text(to_markdown(report), encoding="utf-8")
+    if args.plot:
+        greedy = report.get("baseline_comparison", {}).get("greedy_pass@1")
+        plot_curve(report, args.output.with_suffix(".png"), greedy=greedy)
 
     summary = {key: value for key, value in report.items() if key != "per_question"}
     print(json.dumps(summary, ensure_ascii=False, indent=2))
