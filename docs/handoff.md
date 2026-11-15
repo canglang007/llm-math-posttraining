@@ -81,7 +81,7 @@ B：后训练数据引擎：
 
 - **服务器当前离线**：账户余额用完导致实例被释放，平台在 2026-11-15 **15:43 保存了镜像**（在 15:33 训练完成之后）；新旧 host 端口均超时，host/port/密码会随新实例更换。`/data` 为持久卷（两次重启已验证不丢），恢复清单见第 9 节。硬件 RTX 4070 12GB / 驱动 595.112.07 / CUDA 13.2，工作区 `/data/llm-math-posttraining`，conda 环境 `/data/miniconda/envs/torch`。
 - `/data/models/Qwen3-4B-Base` 已下载完成；另有后训练过的通用版 `Qwen3-4B`（不作 E0 基线）。
-- E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；**E1 pilot 训练已完成**，但同批 50 题评测因实例断开未完成，需重跑；E1 收益要拆成「格式对齐」与「推理提升」两部分。
+- E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；**E1 pilot 训练完成但模型退化不可用**（200 步欠拟合，输出以乱码开头、跑满 512 tokens 不生成 `<|im_end|>`），同批 50 题评测已停止，不能用于 E0/E1 对比；下一步见第 6 节。
 - 全量 E1（2 epochs，约 3h20m）尚未跑；RFT/DPO 还没有真实候选轨迹（需要模型采样）。
 
 ## 6. 下一步顺序
@@ -89,8 +89,9 @@ B：后训练数据引擎：
 1. **review + 提交（已完成）**：SFT 训练层、configs、`evaluate_model.py`、handoff 已随 `2b7484d` 提交，工作区干净。
 2. **baseline probe（已完成，2026-11-15 09:26）**：dev 200 题、batch=1，pass@1 0.77 / 抽取失败 27；失败分析见 `docs/interview-debug-journal.md`。dev 只是探针，test 仍只在最终统一评测时对每个方法（含 Base）各评一次。
 3. **SFT / E1**：
-   - pilot 已完成（200 步，见第 4 节）；全量 2 epochs 约 3h20m，视 pilot 结果再决定是否跑；
-   - **下一步（服务器回来后）**：用 `evaluate_model.py --adapter experiments/sft/qwen3-4b-gsm8k-pilot200 --data-file data/processed/sft/gsm8k-dev.raw.jsonl --limit 50 --batch-size 1` 重跑 E1 同批 50 题，与 E0 的 0.76 / 抽取失败 9 对比，重点看抽取失败率；
+   - pilot（200 步）已完成但**退化不可用**：三层诊断（停止方式 A/B、adapter 开关、标签核对）排除了评测 bug 与加载 bug，判断为 200 步（0.46 epoch）欠拟合；详见 issue-log 17:40 条；
+   - Qwen3 自带 chat_template 会在 assistant 内容前注入 `<think>\n\n</think>\n\n`，可考虑改用项目自带 `QWEN_CHATML_TEMPLATE` 去掉 think 块；
+   - **下一步待定**：① 换模板重跑 200 步 pilot（约 46 分钟）；② 直接跑全量 2 epochs（约 3h20m）；③ 暂停。选定后重训，再做 E1 同批 50 题对比（E0 基准 0.76 / 抽取失败 9）；
    - 正式对比表仍用 test，每个方法各评一次。
 4. **RFT/DPO**：从 SFT 采样候选，用公开答案验证；生成 RFT/DPO 数据；做 A1/A2 消融。
 5. **失败分析 + demo + 报告**。

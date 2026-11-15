@@ -16,7 +16,7 @@
 - 数据放在 `data/`（gitignored），provenance 在 `data/raw/provenance.json`；
 - GPU 服务器（RTX 4070 12GB）工作区 `/data/llm-math-posttraining`，Base 模型与依赖已装好（实例可能重启，恢复清单见 handoff 第 9 节）；
 - E0 baseline（dev 200 题，`--batch-size 1`）：pass@1 0.77、抽取失败 27（13.5%）；
-- E1 pilot SFT（200 步）已完成，adapter 与 4 个 checkpoint 在 `/data`；因账户余额用完实例被释放（平台 15:43 保存镜像），E1 同批 50 题评测待恢复后重跑；
+- E1 pilot SFT（200 步）已完成，adapter 与 checkpoint 在 `/data` 且已回传本地；但三层诊断确认模型退化（欠拟合），50 题评测已停止、E0/E1 对比待重训后再做；
 - 调试与决策过程见 `docs/interview-debug-journal.md`（面试用）。
 
 ## 原则
