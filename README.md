@@ -57,6 +57,7 @@ docs/
   experiment-design.md      数据、方法、实验矩阵、指标
   data-provenance.md        数据来源、许可证、切分、污染说明
   issue-log.md              问题记录（只追加）
+  interview-debug-journal.md 面试用调试与决策实录（A/B 数据、反转、讲法）
 ```
 
 ## 快速开始
