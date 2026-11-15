@@ -92,3 +92,11 @@
 - **修复/决策**：不为刷分放宽判分正则（会破坏口径）；把「抽取失败率」列为 E1 的核心指标，SFT 收益拆成格式对齐与推理提升两部分；正式对比表仍用 test 各评一次，dev 只是探针。
 - **验证**：predictions 200 行、空输出 0；证据 `experiments/baseline/gsm8k-dev-probe200-final.jsonl` 与 `/data/probe-v3.log`，分析见 `docs/interview-debug-journal.md`。
 - **讲法**：先测 baseline 才知道提升空间在哪；0.77 的 Base 让项目从「刷准确率」转向「讲清楚数据引擎到底贡献了什么」。
+
+## 2026-11-15 13:43 — 服务器重启后 /data 完好，系统盘两项需重配
+
+- **现象**：实例重启后 host/port/密码全变；`/data`（60G，余 31G）挂载正常，项目代码/git（`89a8548`）、data 32M、6 个 predictions、Base 模型 7.6G、conda env 8.5G、全部日志脚本都在；但 `/root/.ssh/authorized_keys` 不存在、`tmux` 命令缺失。
+- **根因**：`/data` 是独立持久卷；`/`、`/root`、`/usr` 是随实例重建的容器系统盘，免密公钥和 apt 包都落在那里。
+- **修复**：重新写入本机 `~/.ssh/id_ed25519.pub` 到 authorized_keys（700/600），`apt-get update -qq && apt-get install -y -qq tmux`；把恢复清单写进 handoff 第 9 节。
+- **验证**：免密登录 OK、tmux 3.4、`pytest -q` 33 passed、训练依赖全量 import + CUDA 可用、`train_sft.py --config configs/sft_qwen3_4b_12gb.yaml --dry-run` 通过（6973/500 行、seq 2048/r8）、git 工作区干净、GPU 空闲。
+- **讲法**：交付前要分清「持久盘」和「实例盘」；环境配置必须有一页可执行的恢复清单，不能依赖记忆。

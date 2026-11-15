@@ -177,6 +177,7 @@ python scripts/evaluate_model.py \
 - conda 环境 `torch` 预置 numpy 1.26.4，与 datasets 4.x 要求的 pyarrow>=21 冲突（会导致 `import transformers` 失败）；已统一升级到 numpy 2.5.4 + pyarrow 26.0.1，详见 issue-log。服务器自检除 `pytest -q` 外，还要做一次训练依赖全量 import。
 - `evaluate_model.py` 生成时已合并 `<|im_end|>`/`<|im_start|>` 到 eos，并加字符串停止词与生成后截断；Base 的 generation_config 只认 `<|endoftext|>`（151643），不修会跑满 max_new_tokens 并续写下一轮对话，污染 `####` 答案抽取，详见 issue-log。
 - 正式评测固定 `--batch-size 1`：`>1` 会因左填充与 4bit 数值路径改变 greedy 结果（实测 5 题 accuracy 0.6→0.4），且 GPU 利用率低是 batch=1 自回归 decode 的正常形态，不是故障。`evaluate_model.py` 每 10 题打印 `[progress] n/total`，便于在 tmux 里看进度。
+- **服务器重启恢复清单**（2026-11-15 13:43 实测）：host/port/密码会变，`/data` 持久盘内容全部保留，但 `/root/.ssh/authorized_keys` 和 apt 装的 tmux 在系统盘会丢。开机后：① 用新凭据把本机 `~/.ssh/id_ed25519.pub` 写入服务器 `~/.ssh/authorized_keys`（目录 700、文件 600）；② `apt-get update -qq && apt-get install -y -qq tmux`；③ 自检 `pytest -q`、训练依赖全量 import、`train_sft.py --dry-run`。凭据不写入仓库。
 
 ## 10. 不要做
 
