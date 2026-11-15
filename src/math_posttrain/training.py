@@ -42,7 +42,10 @@ def load_model_and_tokenizer(config: dict[str, Any]):
     tokenizer = AutoTokenizer.from_pretrained(model_config["path"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    if getattr(tokenizer, "chat_template", None) is None:
+    # Qwen3 官方模板会在 assistant 目标前注入空的 <think>\n\n</think>\n\n，
+    # 而推理侧 apply_chat_template 不注入，训练/推理 prompt 分布不一致。
+    # force_chat_template 让两边都用 QWEN_CHATML_TEMPLATE，去掉这段空 think 块。
+    if bool(model_config.get("force_chat_template", False)) or getattr(tokenizer, "chat_template", None) is None:
         tokenizer.chat_template = QWEN_CHATML_TEMPLATE
     model = AutoModelForCausalLM.from_pretrained(
         model_config["path"],
@@ -68,7 +71,13 @@ def load_model_and_tokenizer(config: dict[str, Any]):
     return model, tokenizer
 
 
-def load_eval_model(model_path: str, *, adapter: str | None = None, compute_dtype: str = "bfloat16"):
+def load_eval_model(
+    model_path: str,
+    *,
+    adapter: str | None = None,
+    compute_dtype: str = "bfloat16",
+    force_chat_template: bool = False,
+):
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -76,7 +85,8 @@ def load_eval_model(model_path: str, *, adapter: str | None = None, compute_dtyp
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    if getattr(tokenizer, "chat_template", None) is None:
+    # 与训练侧保持一致：SFT 用 QWEN_CHATML_TEMPLATE 训练时，评测也必须用同一个模板。
+    if force_chat_template or getattr(tokenizer, "chat_template", None) is None:
         tokenizer.chat_template = QWEN_CHATML_TEMPLATE
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
