@@ -19,6 +19,19 @@ REQUIRED = {
     ),
 }
 
+# DPO 不需要 train_file（SFT 格式），而是 preference_file（chosen/rejected 配对）。
+DPO_TRAINING_KEYS = (
+    "output_dir",
+    "preference_file",
+    "per_device_train_batch_size",
+    "gradient_accumulation_steps",
+    "learning_rate",
+    "num_train_epochs",
+    "logging_steps",
+    "save_strategy",
+    "seed",
+)
+
 
 def load_config(path: str | Path) -> dict[str, Any]:
     config_path = Path(path)
@@ -31,7 +44,8 @@ def load_config(path: str | Path) -> dict[str, Any]:
         values = data.get(section)
         if not isinstance(values, dict):
             raise ValueError(f"config missing section: {section}")
-        for key in keys:
+        required = DPO_TRAINING_KEYS if (section == "training" and data.get("task") == "dpo") else keys
+        for key in required:
             if key not in values:
                 raise ValueError(f"config missing {section}.{key}")
     return data

@@ -1,0 +1,47 @@
+# E2 RFT（拒绝采样微调）：在 SFT adapter 基础上，用「只保留答案正确的候选」再训一轮。
+#
+# 与 SFT 的差别只有两点：
+#   1. 起点是 SFT adapter（model.base_adapter），不是 Base；
+#   2. 训练数据是模型自己采样、再用公开答案过滤出来的解，而不是官方 CoT。
+#
+# 这一步同时就是 A2 消融的一半：对照组是「同一批候选但不过滤」（SFT 数据 + 全部候选），
+# 两组的差就是「验证反馈」的单独贡献。
+task: sft
+model:
+  path: /data/models/Qwen3-4B-Base
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-pilot-v2
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/rft/qwen3-4b-gsm8k-rft
+  train_file: data/processed/rft/gsm8k-train-rft.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 10
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42

@@ -23,6 +23,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", required=True)
     parser.add_argument("--adapter", default=None)
+    parser.add_argument("--force-chat-template", action="store_true", help="强制使用 QWEN_CHATML_TEMPLATE")
     parser.add_argument("--data-file", type=Path, required=True)
     parser.add_argument("--dataset", choices=("gsm8k", "math"), required=True)
     parser.add_argument("--split", default="test")
@@ -53,7 +54,12 @@ def main() -> None:
     from math_posttrain.training import load_eval_model
 
     model, tokenizer = load_eval_model(
-        args.model_path, adapter=args.adapter, compute_dtype="bfloat16"
+        args.model_path,
+        adapter=args.adapter,
+        compute_dtype="bfloat16",
+        # 训练时强制了 QWEN_CHATML_TEMPLATE 的 adapter，评测必须同模板，
+        # 否则训练/推理分布不一致，数字不可比。
+        force_chat_template=bool(args.adapter) or args.force_chat_template,
     )
     base_eos = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
     eos_ids = resolve_eos_token_ids(tokenizer, base_eos)

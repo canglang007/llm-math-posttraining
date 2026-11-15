@@ -26,6 +26,8 @@ from math_posttrain.prompts import (  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", required=True)
+    parser.add_argument("--adapter", default=None, help="LoRA adapter 目录（RFT 数据构造时指向当前模型）")
+    parser.add_argument("--force-chat-template", action="store_true", help="强制使用 QWEN_CHATML_TEMPLATE")
     parser.add_argument("--data-file", type=Path, required=True)
     parser.add_argument("--dataset", choices=("gsm8k", "math"), required=True)
     parser.add_argument("--split", default="dev")
@@ -51,7 +53,14 @@ def main() -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    model, tokenizer = load_eval_model(args.model_path, compute_dtype="bfloat16")
+    model, tokenizer = load_eval_model(
+        args.model_path,
+        adapter=args.adapter,
+        compute_dtype="bfloat16",
+        # SFT/RFT 训练时强制了 QWEN_CHATML_TEMPLATE，采样必须用同一个模板，
+        # 否则又回到「训练/推理模板不一致」那个坑里。
+        force_chat_template=bool(args.adapter) or args.force_chat_template,
+    )
     base_eos = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
     eos_ids = resolve_eos_token_ids(tokenizer, base_eos)
 

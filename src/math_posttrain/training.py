@@ -25,9 +25,9 @@ def _torch_dtype(name: str):
     return {"bfloat16": torch.bfloat16, "float16": torch.float16}[name]
 
 
-def load_model_and_tokenizer(config: dict[str, Any]):
+def load_model_and_tokenizer(config: dict[str, Any], *, adapter_path: str | None = None):
     import torch
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     model_config = config["model"]
@@ -56,17 +56,23 @@ def load_model_and_tokenizer(config: dict[str, Any]):
     model = prepare_model_for_kbit_training(
         model, use_gradient_checkpointing=bool(config["training"].get("gradient_checkpointing", True))
     )
-    model = get_peft_model(
-        model,
-        LoraConfig(
-            r=int(lora_config["r"]),
-            lora_alpha=int(lora_config["alpha"]),
-            lora_dropout=float(lora_config["dropout"]),
-            target_modules=list(lora_config["target_modules"]),
-            bias="none",
-            task_type="CAUSAL_LM",
-        ),
-    )
+    # RFT / DPO 的起点是 SFT adapter（而不是 Base），否则等于把 SFT 白做一遍。
+    # 配置里写 model.base_adapter，或命令行显式传 adapter_path。
+    resume_adapter = adapter_path or model_config.get("base_adapter")
+    if resume_adapter:
+        model = PeftModel.from_pretrained(model, resume_adapter, is_trainable=True)
+    else:
+        model = get_peft_model(
+            model,
+            LoraConfig(
+                r=int(lora_config["r"]),
+                lora_alpha=int(lora_config["alpha"]),
+                lora_dropout=float(lora_config["dropout"]),
+                target_modules=list(lora_config["target_modules"]),
+                bias="none",
+                task_type="CAUSAL_LM",
+            ),
+        )
     model.config.use_cache = False
     return model, tokenizer
 

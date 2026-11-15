@@ -71,11 +71,17 @@ def main() -> None:
         write_jsonl(train_output, train_records)
         write_jsonl(dev_output, dev_records)
         write_jsonl(dev_raw_output, _raw_rows(dev_examples))
+        # train 侧也要留一份 raw：RFT 必须在 train（已排除 dev）上采样，
+        # 否则采样题会落进 dev，选模就污染了。
+        train_raw_output = train_output.with_name(f"{args.dataset}-train.raw.jsonl")
+        write_jsonl(train_raw_output, _raw_rows(train_examples))
         dev_stats = _stats(args.dataset, "dev", len(dev_examples), dev_records, dev_output)
         dev_stats["raw_output_path"] = str(dev_raw_output)
+        train_stats = _stats(args.dataset, "train", len(train_examples), train_records, train_output)
+        train_stats["raw_output_path"] = str(train_raw_output)
         print(json.dumps(
             {
-                "train": _stats(args.dataset, "train", len(train_examples), train_records, train_output),
+                "train": train_stats,
                 "dev": dev_stats,
             },
             ensure_ascii=False,
