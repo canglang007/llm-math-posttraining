@@ -1,6 +1,6 @@
 # Handoff：LLM Math Post-Training
 
-更新时间：2026-11-15 15:47（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 15:53（Asia/Shanghai，UTC+08:00）
 
 本文自包含，新会话不需要任何旧项目上下文。按本文和第 11 节的阅读顺序即可继续。
 
@@ -79,7 +79,7 @@ B：后训练数据引擎：
 
 ## 5. 当前未完成 / 阻塞
 
-- **服务器当前离线**（2026-11-15 15:47 起端口超时；host/port/密码会随实例更换）。`/data` 为持久卷，重启后内容不丢；恢复清单见第 9 节。硬件 RTX 4070 12GB / 驱动 595.112.07 / CUDA 13.2，工作区 `/data/llm-math-posttraining`，conda 环境 `/data/miniconda/envs/torch`。
+- **服务器当前离线**：账户余额用完导致实例被释放，平台在 2026-11-15 **15:43 保存了镜像**（在 15:33 训练完成之后）；新旧 host 端口均超时，host/port/密码会随新实例更换。`/data` 为持久卷（两次重启已验证不丢），恢复清单见第 9 节。硬件 RTX 4070 12GB / 驱动 595.112.07 / CUDA 13.2，工作区 `/data/llm-math-posttraining`，conda 环境 `/data/miniconda/envs/torch`。
 - `/data/models/Qwen3-4B-Base` 已下载完成；另有后训练过的通用版 `Qwen3-4B`（不作 E0 基线）。
 - E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；**E1 pilot 训练已完成**，但同批 50 题评测因实例断开未完成，需重跑；E1 收益要拆成「格式对齐」与「推理提升」两部分。
 - 全量 E1（2 epochs，约 3h20m）尚未跑；RFT/DPO 还没有真实候选轨迹（需要模型采样）。
@@ -178,7 +178,7 @@ python scripts/evaluate_model.py \
 - conda 环境 `torch` 预置 numpy 1.26.4，与 datasets 4.x 要求的 pyarrow>=21 冲突（会导致 `import transformers` 失败）；已统一升级到 numpy 2.5.4 + pyarrow 26.0.1，详见 issue-log。服务器自检除 `pytest -q` 外，还要做一次训练依赖全量 import。
 - `evaluate_model.py` 生成时已合并 `<|im_end|>`/`<|im_start|>` 到 eos，并加字符串停止词与生成后截断；Base 的 generation_config 只认 `<|endoftext|>`（151643），不修会跑满 max_new_tokens 并续写下一轮对话，污染 `####` 答案抽取，详见 issue-log。
 - 正式评测固定 `--batch-size 1`：`>1` 会因左填充与 4bit 数值路径改变 greedy 结果（实测 5 题 accuracy 0.6→0.4），且 GPU 利用率低是 batch=1 自回归 decode 的正常形态，不是故障。`evaluate_model.py` 每 10 题打印 `[progress] n/total`，便于在 tmux 里看进度。
-- **服务器重启恢复清单**（2026-11-15 13:43 实测）：host/port/密码会变，`/data` 持久盘内容全部保留，但 `/root/.ssh/authorized_keys` 和 apt 装的 tmux 在系统盘会丢。开机后：① 用新凭据把本机 `~/.ssh/id_ed25519.pub` 写入服务器 `~/.ssh/authorized_keys`（目录 700、文件 600）；② `apt-get update -qq && apt-get install -y -qq tmux`；③ 自检 `pytest -q`、训练依赖全量 import、`train_sft.py --dry-run`。凭据不写入仓库。
+- **服务器重启恢复清单**（2026-11-15 13:43 实测）：host/port/密码会变，`/data` 持久盘内容全部保留，但 `/root/.ssh/authorized_keys` 和 apt 装的 tmux 在系统盘会丢。开机后：① 用新凭据把本机 `~/.ssh/id_ed25519.pub` 写入服务器 `~/.ssh/authorized_keys`（目录 700、文件 600）；② `apt-get update -qq && apt-get install -y -qq tmux`；③ 自检 `pytest -q`、训练依赖全量 import、`train_sft.py --dry-run`。凭据不写入仓库。镜像恢复后**第一优先级**：确认 `experiments/sft/qwen3-4b-gsm8k-pilot200/` 存在，把 adapter 与 checkpoint 回传本地 `data/server-backup/sft/`；本地有完整配置/数据/单测，最坏可用 seed 42 重训 46 分钟复现。
 
 ## 10. 不要做
 
