@@ -213,6 +213,53 @@ def summarize(
     return report
 
 
+def load_step_counts(path: Path) -> dict[str, int]:
+    """用官方解答里的 `<<...>>` 计算器标注数量当题目难度代理（步数越多越难）。"""
+    counts: dict[str, int] = {}
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            solution = row.get("solution") or ""
+            counts[row["id"]] = solution.count("<<")
+    return counts
+
+
+def difficulty_strata(
+    per_question: list[dict], steps: dict[str, int], bins: int = 4
+) -> list[dict]:
+    """按参考解步数分成若干层，看 greedy 与 maj@k / oracle@k 在难易题上的差异。
+
+    难度代理来自公开解答的结构（不是模型分数），因此不会造成信息泄漏。
+    """
+    paired = [row for row in per_question if row.get("greedy_correct") is not None]
+    paired = [row for row in paired if steps.get(row["id"]) is not None]
+    if not paired:
+        return []
+    ordered = sorted(paired, key=lambda row: steps[row["id"]])
+    size = max(1, len(ordered) // bins)
+    strata = []
+    for index in range(bins):
+        chunk = ordered[index * size: (index + 1) * size] if index < bins - 1 else ordered[index * size:]
+        if not chunk:
+            continue
+        greedy = sum(1 for row in chunk if row["greedy_correct"]) / len(chunk)
+        maj = sum(1 for row in chunk if row["maj_at_max_k"]) / len(chunk)
+        oracle = sum(1 for row in chunk if row["oracle_at_max_k"]) / len(chunk)
+        strata.append({
+            "bin": index + 1,
+            "n": len(chunk),
+            "steps_min": min(steps[row["id"]] for row in chunk),
+            "steps_max": max(steps[row["id"]] for row in chunk),
+            "greedy": round(greedy, 4),
+            "maj_at_max_k": round(maj, 4),
+            "oracle_at_max_k": round(oracle, 4),
+            "delta_vs_greedy": round(maj - greedy, 4),
+        })
+    return strata
+
+
 def to_markdown(report: dict) -> str:
     lines = [
         "# 推理时验证结果表",
@@ -257,6 +304,20 @@ def to_markdown(report: dict) -> str:
                     lines.append(
                         f"| {title} | {entry['n']} | {entry['maj_at_max_k']:.4f} | {entry['oracle_at_max_k']:.4f} |"
                     )
+    if report.get("difficulty_strata"):
+        lines += [
+            "",
+            "## 按参考解步数（难度代理）分层",
+            "",
+            "| 难度层 | 步数区间 | 题数 | greedy | maj@k | oracle pass@k | 投票增益 |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for entry in report["difficulty_strata"]:
+            lines.append(
+                f"| Q{entry['bin']} | {entry['steps_min']}–{entry['steps_max']} | {entry['n']} | "
+                f"{entry['greedy']:.4f} | {entry['maj_at_max_k']:.4f} | "
+                f"{entry['oracle_at_max_k']:.4f} | {entry['delta_vs_greedy']:+.4f} |"
+            )
     if "consistency" in report:
         consistency = report["consistency"]
         lines += [
@@ -399,6 +460,8 @@ def main() -> None:
     parser.add_argument("--length-filter", type=int, default=1000)
     parser.add_argument("--avg-tokens", type=float, default=None)
     parser.add_argument("--temperature", type=float, default=None)
+    parser.add_argument("--difficulty-file", type=Path, default=None,
+                        help="带 solution 字段的原始 dev JSONL，用 <<>> 数量做难度代理")
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--output", type=Path, default=Path("experiments/analysis/sampling-report.json"))
     args = parser.parse_args()
@@ -415,6 +478,10 @@ def main() -> None:
         max_chars=args.length_filter,
         avg_tokens=args.avg_tokens,
     )
+    if args.difficulty_file:
+        report["difficulty_strata"] = difficulty_strata(
+            report["per_question"], load_step_counts(args.difficulty_file)
+        )
     if args.temperature is not None:
         report["temperature"] = args.temperature
     args.output.parent.mkdir(parents=True, exist_ok=True)

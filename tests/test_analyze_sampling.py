@@ -75,3 +75,35 @@ def test_markdown_contains_curve_rows() -> None:
     text = to_markdown(report)
     assert "| 3 |" in text
     assert "oracle pass@k" in text
+
+
+def test_difficulty_strata_bins_by_reference_steps() -> None:
+    from analyze_sampling import difficulty_strata
+
+    per_question = [
+        {"id": f"q{i}", "greedy_correct": i % 2 == 0, "maj_at_max_k": True, "oracle_at_max_k": True}
+        for i in range(8)
+    ]
+    steps = {f"q{i}": i for i in range(8)}
+    strata = difficulty_strata(per_question, steps, bins=4)
+    assert len(strata) == 4
+    assert [entry["n"] for entry in strata] == [2, 2, 2, 2]
+    assert strata[0]["steps_min"] == 0 and strata[-1]["steps_max"] == 7
+    # 每层 maj 都是 8/8，greedy 交错 1/2
+    assert all(entry["maj_at_max_k"] == 1.0 for entry in strata)
+    assert all(entry["delta_vs_greedy"] == 0.5 for entry in strata)
+
+
+def test_load_step_counts_counts_calculator_annotations(tmp_path=None) -> None:
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from analyze_sampling import load_step_counts
+
+    with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as handle:
+        handle.write(json.dumps({"id": "a", "solution": "1+1=$<<1+1=2>>2\n#### 2"}) + "\n")
+        handle.write(json.dumps({"id": "b", "solution": "no annotation #### 5"}) + "\n")
+        path = Path(handle.name)
+    counts = load_step_counts(path)
+    assert counts == {"a": 1, "b": 0}
