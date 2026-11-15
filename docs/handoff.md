@@ -1,6 +1,6 @@
 # Handoff：LLM Math Post-Training
 
-更新时间：2026-11-15 08:03（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-15 09:28（Asia/Shanghai，UTC+08:00）
 
 本文自包含，新会话不需要任何旧项目上下文。按本文和第 11 节的阅读顺序即可继续。
 
@@ -55,13 +55,7 @@ B：后训练数据引擎：
 
 ## 4. 当前进度
 
-已提交（2026-11-15 08:03 核对，`git status --short` 无输出）：
-
-```text
-edb5a18 修正评测隔离与 Base 生成停止符，补齐服务器环境记录
-2b7484d 增加 QLoRA SFT 训练、评测与交接文档
-458d159 初始化数学推理后训练项目基础链路
-```
+已提交（2026-11-15 09:28 核对，工作区干净）：基础链路、SFT/评测层、评测隔离与生成停止修复、性能实测、E0 baseline 结果和面试调试实录均已入库；完整历史用 `git log --oneline` 查看。
 
 已完成：
 
@@ -69,35 +63,33 @@ edb5a18 修正评测隔离与 Base 生成停止符，补齐服务器环境记录
 - SFT / RFT / DPO 数据构造；
 - QLoRA SFT 训练脚本 + 12GB/24GB 配置；
 - 本机评测脚本（Base/adapter → predictions → pass@1）；
-- 28 个本地单测通过；
+- 33 个单测通过（本地与服务器一致）；
 - GSM8K：raw train 7473 / test 1319；
 - MATH：raw train 7498 / test 5000（train 2 条无 `\boxed{}` 答案已跳过）；
 - SFT 数据：
   - GSM8K：6973 train / 500 dev，dev 原始文件 `data/processed/sft/gsm8k-dev.raw.jsonl`；
   - MATH：6998 train / 500 dev，dev 原始文件 `data/processed/sft/math-dev.raw.jsonl`；
-- RFT/DPO 构造器在小样本验证（RFT 2 条、DPO 1 对）。
+- RFT/DPO 构造器在小样本验证（RFT 2 条、DPO 1 对）；
+- E0 baseline（dev 200 题，batch=1 正式口径，2026-11-15 09:26）：pass@1 **0.77**（154/200）、抽取成功但错 19、抽取失败 27（13.5%）、空输出 0；预测 `experiments/baseline/gsm8k-dev-probe200-final.jsonl`，日志 `/data/probe-v3.log`；
+- 面试用调试与决策实录 `docs/interview-debug-journal.md`（时间线、A/B 数字、两次优化反转、1 分钟讲法、Q&A）。
 
 状态修正：原 handoff 记为「未提交」的 SFT 训练层、configs、`evaluate_model.py`、handoff 文档，均已随 `2b7484d` 提交。后续提交仍用中文消息，不要提交 `data/`、模型或实验产物。
 
 ## 5. 当前未完成 / 阻塞
 
 - GPU 服务器已就绪（2026-11-15 07:44 起）：RTX 4070 12GB、驱动 595.112.07 / CUDA 13.2；`/data` 60G（余 39G）；工作区 `/data/llm-math-posttraining`；conda 环境 `/data/miniconda/envs/torch`（Python 3.12.13 / torch 2.10.0+cu128）；tmux 3.4 已装，用清华 pip 源装依赖。
-- 服务器上 `/data/models/Qwen3-4B` 是**后训练过的通用版**（model card 标 `base_model: Qwen/Qwen3-4B-Base`），不是 Base 权重；`Qwen/Qwen3-4B-Base` 正在 tmux 会话 `bootstrap` 中下载到 `/data/models/Qwen3-4B-Base`，日志 `/data/bootstrap.log`。
-- 尚未运行过任何训练或推理；Base baseline 未测，headroom 未知。
+- `/data/models/Qwen3-4B-Base` 已下载完成；另有后训练过的通用版 `Qwen3-4B`（不作 E0 基线）。
+- **训练尚未开始**；E0 baseline 已测（dev 0.77），headroom 有限，27 个失败多为输出格式未对齐；E1 收益需拆成「格式对齐」与「推理提升」两部分。
 - RFT/DPO 还没有真实候选轨迹（需要模型采样）。
 
 ## 6. 下一步顺序
 
 1. **review + 提交（已完成）**：SFT 训练层、configs、`evaluate_model.py`、handoff 已随 `2b7484d` 提交，工作区干净。
-2. **GPU 就绪后先测 baseline probe**：
-   - 确认 `bootstrap` 会话完成依赖安装、pytest 和 Base 模型下载（`tmux attach -t bootstrap` 或看 `/data/bootstrap.log`）；
-   - 用 `evaluate_model.py` 在 **dev 子集** `data/processed/sft/gsm8k-dev.raw.jsonl --limit 200` 上跑 Base（无 adapter），不碰 test；
-   - 看 pass@1、答案抽取失败率、格式错误；据此决定数据集、prompt 和训练预算；
-   - test 只在最终统一评测时对每个方法（含 Base）各评一次。
+2. **baseline probe（已完成，2026-11-15 09:26）**：dev 200 题、batch=1，pass@1 0.77 / 抽取失败 27；失败分析见 `docs/interview-debug-journal.md`。dev 只是探针，test 仍只在最终统一评测时对每个方法（含 Base）各评一次。
 3. **SFT**：
-   - 先 `train_sft.py --config ... --dry-run`；
-   - 用 12GB 或 24GB 配置训练；
-   - 每个 epoch checkpoint 用 `evaluate_model.py` 在 dev.raw 上算 pass@1，选最好；
+   - 先 `train_sft.py --config configs/sft_qwen3_4b_12gb.yaml --dry-run`；
+   - 用 12GB 配置训练（24GB 配置在这台机上不适用）；
+   - 每个 epoch checkpoint 用 `evaluate_model.py` 在 dev.raw 上算 pass@1 选最好，同时看抽取失败率是否下降（E1 的主要增益可能来自格式对齐）；
    - test 只评一次。
 4. **RFT/DPO**：从 SFT 采样候选，用公开答案验证；生成 RFT/DPO 数据；做 A1/A2 消融。
 5. **失败分析 + demo + 报告**。
