@@ -146,3 +146,12 @@
 - **修复**：`encode_sft_example` 把 assistant 段最后一处 `<|im_end|>` 替换为 `<|endoftext|>`（system/user 轮次保持 ChatML），推理侧零改动——`resolve_eos_token_ids` 本就含 base eos。
 - **验证**：从 checkpoint-200 续训 20 步即达停止符 top-1 命中 **20/20**、eos loss 0.062；dev 10 题 correct 7、抽取失败 0、生成长度 81~568 字符、末尾干净收尾 `#### 18`。随后从 Base 用新目标重训 400 步（`configs/sft_qwen3_4b_12gb_v3.yaml`）。
 - **讲法**：输出异常先拆位置级 loss，不要只看平均值；加权无效就该怀疑「这个 token 本身有没有被训练过」，并做同位置对照实验。小改动背后是三次测量、两次推翻假设。
+
+## 2026-11-16 16:30 服务器清理 + 修复 RFT 起点配置（Asia/Shanghai UTC+8）
+
+- **问题 1：RFT 配置起点指向被教坏的模型**。`configs/rft_qwen3_4b_12gb.yaml` 的 `model.base_adapter` 仍指向 `qwen3-4b-gsm8k-pilot-v2`——正是被 `<|im_end|>` 停止符 bug 教坏、已证明不可用的版本。若直接跑 E2，会用坏起点污染整条 RFT→DPO 链。已改为 `qwen3-4b-gsm8k-sft-v3/checkpoint-400`（E1 正式模型，dev-200 = 0.845）。终检 adapter_config 的 base_model 为 Qwen3-4B-Base、r/alpha=8/16、66MB，加载路径正确。
+- **问题 2：/data 冗余产物拖慢每次开机拷贝**。清理前 33G，其中模型 16G、conda 9.2G、项目 2G。
+  - 删除历史失败实验 ckpt（结论均已写入文档、权重不再需要）：`pilot200` 411M、`pilot-v2` 302M（教坏版本）、`eosfix` 300M（加权失败）、`stopfix` 411M（临时验证，v3 已取代）、`12gb` 空目录，以及 `sft-v3` 的中间 ckpt-100/200/300 各 111M。共约 1.7G。
+  - 删除 `/data/models/Qwen3-4B`（instruct 版 7.6G，用户确认）：本项目零引用；12 处模型路径全部指向 `Qwen3-4B-Base`。清理后核对无残留坏引用，Base 完好。
+  - **保留**：`Qwen3-4B-Base` 7.6G、conda 环境、项目代码/配置/文档、`sft-v3` 最终 adapter + ckpt-400（RFT 起点）、baseline/eval/sampling 结果、data 处理结果。项目目录 2G→229M，/data 33G→23G。
+- **讲法**：清理不是「删东西」，是「区分可复现结论与一次性权重」——结论进文档、可复现；失败实验权重删掉、不拖累迭代速度。这是工程判断，不是 housekeeping。

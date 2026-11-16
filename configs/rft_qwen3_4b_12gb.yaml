@@ -9,7 +9,7 @@
 task: sft
 model:
   path: /data/models/Qwen3-4B-Base
-  base_adapter: experiments/sft/qwen3-4b-gsm8k-pilot-v2
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-sft-v3/checkpoint-400
   load_in_4bit: true
   compute_dtype: bfloat16
   max_seq_len: 1024
