@@ -155,3 +155,11 @@
   - 删除 `/data/models/Qwen3-4B`（instruct 版 7.6G，用户确认）：本项目零引用；12 处模型路径全部指向 `Qwen3-4B-Base`。清理后核对无残留坏引用，Base 完好。
   - **保留**：`Qwen3-4B-Base` 7.6G、conda 环境、项目代码/配置/文档、`sft-v3` 最终 adapter + ckpt-400（RFT 起点）、baseline/eval/sampling 结果、data 处理结果。项目目录 2G→229M，/data 33G→23G。
 - **讲法**：清理不是「删东西」，是「区分可复现结论与一次性权重」——结论进文档、可复现；失败实验权重删掉、不拖累迭代速度。这是工程判断，不是 housekeeping。
+
+## 2026-11-16 17:07 RFT 采样：性能瓶颈定位与规模决策（Asia/Shanghai UTC+8）
+
+- **流程错误（必须记住）**：首次冒烟采样失败时，我用了 `2>&1 | grep | tail` 管道，日志没落盘、退出码也是 tail 的，导致根因无法追溯，随后直接重跑还编了猜测当结论。教训：**所有 GPU 命令先完整落盘日志，出问题先读日志再动手，禁止直接重跑**。此后所有采样/训练命令均 `> /data/xxx.log 2>&1` 并记录 START/EXIT/END 时间。
+- **性能瓶颈定位**：实测 10 题 × k=4 = 9 分钟（含 ~1min 加载），约 48s/题，1000 题要 ~8h。嫌疑是 `generate` 的 `stop_strings`——transformers 每 token 需 decode 整个序列做字符串匹配。SFT v3 已学会用 `<|endoftext|>` 主动停止（E1 诊断 top-1 20/20），token 级 eos 已足够。
+- **A/B 验证**（同一批 10 题 k=4，开/关 stop_strings）：关闭后 6min45s（**提速 25%**）；两组正确率均 0.75、平均长度均 251 字符、生成内容逐字一致。结论：stop_strings 从不触发，关掉安全。新增 `--no-stop-strings` 开关（默认关，仅在确认模型会停时用）。
+- **规模决策**：1000 题要 6-8h 太久，主线只需足够的正确候选训 RFT/DPO。选 **300 题 × k=4**：约 1200 候选、~900 条正确解（够 RFT 二次精调），~200+ DPO 配对（同题有对有错）。预计 ~1.8h。
+- **正式采样**：`gsm8k-train300-k4-t0.7.jsonl`，起点 sft-v3/checkpoint-400，train 数据、seed 42、temp 0.7，日志 `/data/rft-sampling.log`。dev 绝不参与（数据纪律）。

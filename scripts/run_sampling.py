@@ -36,6 +36,12 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--max-new-tokens", type=int, default=384)
+    parser.add_argument(
+        "--no-stop-strings",
+        action="store_true",
+        help="关闭 generate 的字符串停止词。SFT 模型已学会用 <|endoftext|> 主动停止，"
+             "stop_strings 每 token 都要 decode 整个序列，是主要性能开销。仅在确认模型会停时用。",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -81,8 +87,14 @@ def main() -> None:
                 max_new_tokens=args.max_new_tokens,
                 eos_token_id=eos_ids,
                 pad_token_id=tokenizer.pad_token_id,
-                stop_strings=generation_stop_strings(),
-                tokenizer=tokenizer,
+                **(
+                    {}
+                    if args.no_stop_strings
+                    else {
+                        "stop_strings": generation_stop_strings(),
+                        "tokenizer": tokenizer,
+                    }
+                ),
             )
         candidates = []
         for output in outputs:
