@@ -78,7 +78,10 @@ def main() -> None:
     from math_posttrain.training import load_model_and_tokenizer
 
     model, tokenizer = load_model_and_tokenizer(config)
-    dataset = to_preference_dataset(rows)
+    # TRL 0.29 的 DPOTrainer 需要 datasets.Dataset，不接受 list。
+    from datasets import Dataset as HFDataset
+
+    dataset = HFDataset.from_list(to_preference_dataset(rows))
 
     dpo_args = DPOConfig(
         output_dir=training["output_dir"],
@@ -99,7 +102,7 @@ def main() -> None:
         optim=training.get("optim", "paged_adamw_8bit"),
         seed=int(training["seed"]),
         max_length=int(config["model"]["max_seq_len"]),
-        max_prompt_length=int(config["model"].get("max_prompt_len", 512)),
+        # TRL 0.29 已移除 max_prompt_length，prompt 截断由 max_length 统一管理。
         report_to=[],
     )
     trainer = DPOTrainer(

@@ -172,3 +172,11 @@
 - **实质改进**：`run_sampling.py` 结果改为每题即时写盘并 flush，新增 `--resume`（按已有 id 跳过、追加写入）、`--progress-every`（进度带 elapsed/rate/ETA）。长时间采样中断不再全丢，且任何时候都能判断速度。
 - **规模决策**：300 题 → 120 题 × k=4（仍够 ~350 条正确解 + 上百 DPO 对）。下游管线本地演练通过，演练产物已清理。
 - **讲法**：这一段的价值是「在不确定硬件性能时，把长任务改造成可观测、可恢复」，而不是硬等或盲目重跑。
+
+## 2026-11-16 21:35 RFT/DPO 训练完成 + DPO 学习率 bug 修复（Asia/Shanghai UTC+8）
+
+- **RFT 训练完成**：起点 sft-v3/checkpoint-400，数据 = train 120 题 × k=4 采样 → 480 候选 → 412 条正确解（85.8% 正确率，SFT 后模型生成质量显著高于 dev 时代的 74%）。52 步 loss 0.13→0.087。产物 experiments/rft/qwen3-4b-gsm8k-rft。
+- **DPO 三个问题连环**：①TRL 0.29 移除 max_prompt_length（删参数即可）；②DPOTrainer 不再接受 list，需 datasets.Dataset.from_list 包装；③**学习率配置错误（根因级）**：5e-6 是全参数 DPO 量级，LoRA 上 2 步训练参数完全没动——train_loss 恒为 ln(2)=0.6931、rewards/margins 精确 0。改为 5e-5 + accum 16→8 + epochs 1→3（26 对小数据需要更多步）后，loss 降至 0.059、rewards/accuracies 1.0、margins 3.3，偏好学习真正生效。
+- **诊断方法**：train_loss 精确等于 ln(2) 是「policy 与 ref 完全相同」的签名——先怀疑梯度断流（prepare_model_for_kbit_training 已有），再看 2 步 × 5e-6 更新量级，锁定学习率。rewards 精确 0.0 而非接近 0 是关键区分线索。
+- **评测中**：RFT/DPO dev-200 串行评测 21:33 启动，与 Base/SFT 同口径（greedy、batch=1、dev 200），跑完出四档主表。
+- **讲法**：DPO 这一课的价值是「训练完成 ≠ 训练有效」——rewards/accuracies 与 loss 相对理论初值 ln(2) 的位置是 DPO 是否生效的判据，比看 loss 下降更根本。

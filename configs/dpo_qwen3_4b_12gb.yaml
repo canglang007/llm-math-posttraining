@@ -32,12 +32,15 @@ training:
   preference_file: data/processed/dpo/gsm8k-train-dpo.jsonl
   beta: 0.1
   per_device_train_batch_size: 1
-  gradient_accumulation_steps: 16
-  learning_rate: 5.0e-6
-  num_train_epochs: 1
+  # 26 对数据很小：accum 16 只会得到 2 步、LoRA 上 5e-6 太小（那是全参数 DPO 的量级），
+  # 实测 train_loss 恒为 ln2、rewards 全 0（参数没动）。改为 accum 8 + epochs 3（约 10 步）
+  # + lr 5e-5（TRL LoRA-DPO 示例量级），让梯度真正走起来。
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-5
+  num_train_epochs: 3
   warmup_ratio: 0.1
   lr_scheduler_type: cosine
-  logging_steps: 10
+  logging_steps: 2
   save_strategy: steps
   save_steps: 100
   save_total_limit: 2
