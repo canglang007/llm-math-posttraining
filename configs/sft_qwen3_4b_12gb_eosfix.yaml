@@ -1,0 +1,59 @@
+# E1 修正：给 <|im_end|> 加权，修「会答但不会停」。
+#
+# 依据 scripts/diag_eos_loss.py 在 checkpoint-200 上的实测（20 条训练样本）：
+#   assistant 段平均 loss 0.338 —— 看起来已经收敛；
+#   但 <|im_end|> 那一个 token 的 loss 是 7.83，argmax 排名 1982，top1 命中 0/20。
+#   尾部逐 token loss = [1e-4, 1e-4, 0.0, 7.83, 0.0]：答案行之前全学到了，
+#   唯独收尾这一位没学会。
+#
+# 原因是 CE 按 token 平均，assistant 段约 64 token，停止符只占 1/64，梯度被
+# 稀释 64 倍，摊进平均 loss 只剩约 0.12。所以 200 步「loss 已经平了」是假象，
+# 真正没学会的那一位被平均值盖住了。
+#
+# 因此本配置不从 Base 重头再来，而是从 checkpoint-200 续训，只改三件事：
+#   1. eos_loss_weight: 30  —— 停止符成为独立学习目标（梯度信号 ×30）
+#   2. learning_rate 1e-4   —— 续训微调，比原 2e-4 小一半
+#   3. max_steps 40         —— 先看趋势；每 20 步存一次，随时可诊断并可回退
+model:
+  path: /data/models/Qwen3-4B-Base
+  # 从已训练的 SFT adapter 续训：200 步的推理能力保留，只补「收尾」这一课。
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-pilot-v2/checkpoint-200
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/sft/qwen3-4b-gsm8k-eosfix
+  train_file: data/processed/sft/gsm8k-train.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 5
+  save_strategy: steps
+  save_steps: 20
+  save_total_limit: 4
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42
+  max_steps: 40
+  # 关键变量：<|im_end|>(151645) 位置的 loss 权重。
+  eos_loss_weight: 30.0
+  eos_token_id: 151645

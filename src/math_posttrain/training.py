@@ -111,6 +111,67 @@ def load_eval_model(
     return model, tokenizer
 
 
+def _eos_weighted_trainer_class():
+    """延迟到调用时才 import transformers：Mac 侧不装训练依赖也能 import 本模块。
+
+    给 ``<|im_end|>`` 加权，修「会答但不会停」。
+
+    实测（``scripts/diag_eos_loss.py``，20 条训练样本，checkpoint-200）：
+
+    ==================  ==============  ===============  ============
+    指标                  Base            SFT(200 步)      说明
+    ==================  ==============  ===============  ============
+    assistant 平均 loss   —               0.338           看着已收敛
+    ``<|im_end|>`` loss  15.22           7.83            困惑度 ≈ 2500
+    argmax 排名          14582           1982            要进 top1 才会停
+    top1 命中             0/20            0/20            generate 用 greedy
+    ==================  ==============  ===============  ============
+
+    尾部逐 token loss 是 ``[1e-4, 1e-4, 0.0, 7.83, 0.0]``——答案行之前每个
+    token 都拟合到 1e-4，唯独收尾那一位没学会。原因是 CE 按 token 平均，
+    assistant 段约 64 token，停止符只占 1/64，梯度被稀释 64 倍，摊进平均
+    loss 只剩约 0.12，看起来「已经收敛」，实际最关键的决策完全没学到。
+
+    所以这里把停止符位置的 loss 权重放大到 ``eos_loss_weight``，让它成为
+    一个独立的学习目标；而不是靠加轮数、用 1/64 的效率慢慢磨。
+    """
+    from transformers import Trainer
+
+    class EosWeightedTrainer(Trainer):
+        def __init__(self, *args, eos_token_id: int = 151645, eos_weight: float = 1.0, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.eos_token_id = int(eos_token_id)
+            self.eos_weight = float(eos_weight)
+
+        def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+            import torch
+            import torch.nn.functional as F
+
+            labels = inputs.pop("labels")
+            outputs = model(**inputs)
+            logits = outputs.logits
+            # labels[j] 由位置 j-1 的 logits 预测，整体左移一位对齐。
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+            flat_labels = shift_labels.view(-1)
+            losses = F.cross_entropy(flat_logits, flat_labels, reduction="none", ignore_index=-100)
+            weights = torch.ones_like(losses)
+            weights[flat_labels == self.eos_token_id] = self.eos_weight
+            valid = flat_labels != -100
+            # 分母也用权重求和：否则加权后 loss 量级整体放大，LR 相当于被偷偷改了。
+            loss = (losses * weights)[valid].sum() / weights[valid].sum()
+            # Trainer 只在 model_accepts_loss_kwargs=False 时才帮忙除 accum，
+            # 而 Qwen3 的 forward 有 num_items_in_batch 参数，被判为 True，
+            # 于是它假定「模型自己做了缩放」不会再除。我们绕过了那套逻辑，
+            # 必须自己补上——否则梯度被放大 accum 倍（实测 loss 30.7 ≈ 1.9×16，
+            # grad_norm 4.07 vs 正常 0.3，等效 LR 被放大 16 倍）。
+            loss = loss / self.args.gradient_accumulation_steps
+            return (loss, outputs) if return_outputs else loss
+
+    return EosWeightedTrainer
+
+
 def build_trainer(config: dict[str, Any], model: Any, tokenizer: Any, train_rows: list[dict], dev_rows: list[dict]):
     from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
 
@@ -144,10 +205,20 @@ def build_trainer(config: dict[str, Any], model: Any, tokenizer: Any, train_rows
         eval_strategy="epoch" if dev_rows else "no",
         max_steps=int(training.get("max_steps", -1)),
     )
-    return Trainer(
-        model=model,
-        args=arguments,
-        train_dataset=SFTDataset(train_rows, tokenizer, max_seq_len),
-        eval_dataset=SFTDataset(dev_rows, tokenizer, max_seq_len) if dev_rows else None,
-        data_collator=collator,
-    )
+    trainer_kwargs = {
+        "model": model,
+        "args": arguments,
+        "train_dataset": SFTDataset(train_rows, tokenizer, max_seq_len),
+        "eval_dataset": SFTDataset(dev_rows, tokenizer, max_seq_len) if dev_rows else None,
+        "data_collator": collator,
+    }
+    # eos_loss_weight > 1 时才换 trainer，默认 1.0 与历史实验完全一致。
+    eos_weight = float(training.get("eos_loss_weight", 1.0))
+    if eos_weight > 1.0:
+        trainer_cls = _eos_weighted_trainer_class()
+        return trainer_cls(
+            eos_token_id=int(training.get("eos_token_id", 151645)),
+            eos_weight=eos_weight,
+            **trainer_kwargs,
+        )
+    return Trainer(**trainer_kwargs)

@@ -1,0 +1,52 @@
+# 停止符换回 Base 自己学过的 <|endoftext|>(151643)。
+#
+# 根因（scripts/diag_eos_loss.py 实测，答案行之后那个位置）：
+#   Base      : <|endoftext|> rank 1     概率 56.7%   <|im_end|> rank 14577
+#   SFT 200步 : <|endoftext|> rank 151598 概率 0      <|im_end|> rank 1949
+#
+# Base 本来就会停；我们改用 ChatML 的 <|im_end|> 收尾，把这个 token 逼了下去，
+# 而 <|im_end|> 在 Base 预训练里从未出现、lm_head 那一行是随机的，LoRA 又不含
+# lm_head，所以加权 30 训 40 步 rank 只从 1982 动到 1949。
+#
+# 本配置：训练目标用 <|endoftext|> 收尾（encode_sft_example 里替换最后一处
+# <|im_end|>），从 checkpoint-200 续训，把被压掉的停止行为拉回来。
+# 推理侧不需要改：resolve_eos_token_ids 已经把 base eos(151643) 包含在内。
+model:
+  path: /data/models/Qwen3-4B-Base
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-pilot-v2/checkpoint-200
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/sft/qwen3-4b-gsm8k-stopfix
+  train_file: data/processed/sft/gsm8k-train.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 5
+  save_strategy: steps
+  save_steps: 10
+  save_total_limit: 4
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42
+  max_steps: 30

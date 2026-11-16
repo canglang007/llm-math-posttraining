@@ -132,4 +132,17 @@
 - **根因**：①容器 sshd 的 publickey 先协商、PAM 偶发拒绝，密码认证单独指定后稳定（与代码无关）；②apt 装的 tmux 落在系统盘，实例重建即丢（第 9 节清单已记）；③本机 pytest 临时目录创建被沙箱 broker 拦成 EEXIST，不是项目 bug。
 - **修复**：SSH 包装脚本按 `PreferredAuthentications=password` + 最多 5 次重试；`apt-get install -y tmux` 恢复；pytest 统一加 `--basetemp=/tmp/mpt-pytest`。
 - **验证**：`/data/llm-math-posttraining` 在 `a00f73c`，用 `git bundle` 增量同步到 `3a21aef`；48 项单测通过（`--basetemp`）；`/data/models/Qwen3-4B-Base` 与 conda `torch` 环境（torch 2.10.0+cu128）可用；`experiments/sft/` 为空但 adapter 已在本地 `data/server-backup/sft/`，不影响推理时验证主线。
-- **讲法**：服务器凭据/包/临时目录都属于「实例盘假设」，交付脚本里要把这些当作会失效的外部依赖，而不是环境常识。
+- **讲法**：服务器凭据/包/临时目录都属于「实例盘假设」，交付脚本里要把这些当作会失效的外部环境假设，而不是环境常识。
+
+## 2026-11-16 10:35 — 模型「会答但不会停」：根因是停止符用了 Base 没学过的 token
+
+- **现象**：SFT pilot-v2 checkpoint-200 生成跑满 512 token（≈2000 字符），答案后继续编造下一题并给出第二个 `####`；训练侧 loss 却显示正常收敛（0.356）。
+- **诊断三层**（完整版见 `docs/eos-stop-diagnosis.md`）：
+  1. 按 token 位置拆 loss（`scripts/diag_eos_loss.py`）：assistant 段平均 loss 0.338，但 `<|im_end|>` 位置 loss 7.83、argmax 排名 1982、top-1 命中 0/20。尾部 loss 为 `[1e-4, 1e-4, 0.0, 7.83, 0.0]`——**平均值把单个关键 token 的失败盖住了**。
+  2. 给停止符加权 30（`EosWeightedTrainer`），续训 40 步：loss 平在 1.92，rank 仅 1982→1949，top-1 仍 0/20。**证明瓶颈不在梯度大小。**
+  3. 对照实验：同一位置 Base 对 `<|endoftext|>(151643)` 是 **rank 1 / 概率 56.7%**，对 `<|im_end|>(151645)` 是 rank 14577；SFT 后前者被压到 rank 151598。该位置 top-5 全是乱码 token、概率 0.0004，**分布近乎平坦**。
+- **根因**：Base 本来就会用 `<|endoftext|>` 停；我们改用 ChatML 的 `<|im_end|>` 收尾，而该 token 在 Base 预训练中从未出现、`lm_head` 对应行是随机的，LoRA 又不含 `lm_head`，所以加权也推不上去——同时还把 Base 原本正确的停止行为压掉了。
+- **顺带修的坑**：自定义 `compute_loss` 未除 `gradient_accumulation_steps`，首次运行 loss 显示 30.7（≈1.92×16）、grad_norm 4.07（正常 0.3）。原因是新版 transformers 认为模型会用 `num_items_in_batch` 缩放便不再代除，而该参数被自定义 loss 吃掉，**梯度被放大 16 倍**。
+- **修复**：`encode_sft_example` 把 assistant 段最后一处 `<|im_end|>` 替换为 `<|endoftext|>`（system/user 轮次保持 ChatML），推理侧零改动——`resolve_eos_token_ids` 本就含 base eos。
+- **验证**：从 checkpoint-200 续训 20 步即达停止符 top-1 命中 **20/20**、eos loss 0.062；dev 10 题 correct 7、抽取失败 0、生成长度 81~568 字符、末尾干净收尾 `#### 18`。随后从 Base 用新目标重训 400 步（`configs/sft_qwen3_4b_12gb_v3.yaml`）。
+- **讲法**：输出异常先拆位置级 loss，不要只看平均值；加权无效就该怀疑「这个 token 本身有没有被训练过」，并做同位置对照实验。小改动背后是三次测量、两次推翻假设。

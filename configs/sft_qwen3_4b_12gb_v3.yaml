@@ -1,0 +1,55 @@
+# E1 正式重训：从 Base 开始，训练目标一步到位用对停止符。
+#
+# 背景：此前 pilot-v2 用 ChatML 的 <|im_end|>(151645) 收尾，该 token 在
+# Qwen3-Base 预训练中从未出现，lm_head 那一行是随机的；同时训练把 Base
+# 原本的停止行为（<|endoftext|> 151643，rank 1、概率 56.7%）压到了
+# rank 151598。结果模型既不会用旧方式停、也学不会新方式停。
+#
+# 证据：scripts/diag_eos_loss.py + configs/sft_qwen3_4b_12gb_eosfix.yaml
+# （对 <|im_end|> 加权 30 训 40 步，rank 只从 1982 动到 1949，证明瓶颈在
+#  lm_head 而非梯度大小）。
+#
+# 现方案：encode_sft_example 把 assistant 段最后一处 <|im_end|> 换成
+# <|endoftext|>。在 checkpoint-200 上仅续训 20 步即达到停止符 top-1
+# 命中 20/20，dev 10 题 0.7 / 抽取失败 0 / 输出干净收尾。
+#
+# 本配置不复用任何旧 checkpoint，从 Base 重训 400 步（约 0.92 epoch），
+# 让 E1 与 Base baseline 成为一次可比的前后对比，而不是补丁叠补丁。
+model:
+  path: /data/models/Qwen3-4B-Base
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/sft/qwen3-4b-gsm8k-sft-v3
+  train_file: data/processed/sft/gsm8k-train.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 2.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 10
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 4
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42
+  max_steps: 400
