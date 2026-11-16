@@ -9,6 +9,7 @@ import argparse
 import json
 import random
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -44,6 +45,12 @@ def main() -> None:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="断点续跑：读取已有输出中的题目 id 并跳过，结果追加写入。不指定则从头覆盖。",
+    )
+    parser.add_argument("--progress-every", type=int, default=5, help="每隔多少题打印一次进度")
     args = parser.parse_args()
 
     examples = load_examples(args.data_file, source=args.dataset, split=args.split)
@@ -70,9 +77,24 @@ def main() -> None:
     base_eos = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
     eos_ids = resolve_eos_token_ids(tokenizer, base_eos)
 
-    rows = []
+    # 断点续跑：已有产物按 id 跳过；结果逐题追加并立即 flush，
+    # 这样长时间采样被中断也不会丢掉已经算完的题。
+    done_ids: set[str] = set()
+    if args.resume and args.output.exists():
+        with args.output.open(encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    done_ids.add(str(json.loads(line)["id"]))
+        print(f"[resume] skip {len(done_ids)} completed questions", flush=True)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    out_handle = args.output.open("a" if args.resume else "w", encoding="utf-8")
+
+    n_written = 0
     total_new_tokens = 0
+    started = time.monotonic()
     for start, example in enumerate(examples, start=1):
+        if str(example.id) in done_ids:
+            continue
         messages = build_chat_messages(example.question, args.dataset)
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
@@ -103,29 +125,39 @@ def main() -> None:
             )
             candidates.append(text)
             total_new_tokens += len(output) - prompt_len
-        rows.append({
+        row = {
             "id": example.id,
             "question": example.question,
             "reference": example.answer,
             "category": example.category,
             "level": example.level,
             "candidates": candidates,
-        })
-        if start % 10 == 0 or start == len(examples):
-            print(f"[progress] {start}/{len(examples)}", flush=True)
+        }
+        out_handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        out_handle.flush()
+        n_written += 1
+        if start % args.progress_every == 0 or start == len(examples):
+            elapsed = time.monotonic() - started
+            rate = elapsed / max(1, n_written)
+            remaining = (len(examples) - start) * rate
+            print(
+                f"[progress] {start}/{len(examples)} written={n_written} "
+                f"elapsed={elapsed:.0f}s rate={rate:.1f}s/q eta={remaining/60:.1f}min",
+                flush=True,
+            )
 
-    write_jsonl(args.output, rows)
-    avg = total_new_tokens / max(1, len(rows) * args.k)
+    out_handle.close()
+    avg = total_new_tokens / max(1, n_written * args.k)
     print(json.dumps({
         "saved": str(args.output),
-        "questions": len(rows),
+        "questions": n_written,
         "k": args.k,
         "seed": args.seed,
         "temperature": args.temperature,
         "top_p": args.top_p,
         "max_new_tokens": args.max_new_tokens,
         "avg_new_tokens_per_candidate": round(avg, 1),
-        "budget": sampling_cost(len(rows), args.k, avg),
+        "budget": sampling_cost(n_written, args.k, avg),
     }, ensure_ascii=False, indent=2))
 
 
