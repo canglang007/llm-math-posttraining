@@ -28,8 +28,8 @@ from math_posttrain.answers import extract_final_answer, is_correct  # noqa: E40
 
 DATASET = "gsm8k"
 
-# 实验登记表：key -> (阶段, 显示名, 结果文件, 训练数据说明)
-RUNS: list[dict] = [
+# 实验登记表（dev-200）：key -> (阶段, 显示名, 结果文件, 训练数据说明)
+RUNS_DEV200: list[dict] = [
     {
         "key": "base",
         "stage": "E0",
@@ -105,6 +105,37 @@ RUNS: list[dict] = [
 ]
 
 
+# dev-500 变体：只重评了三个关键档（判定 ±2pt 级效应是否真实）
+RUNS_DEV500: list[dict] = [
+    {
+        "key": "sft",
+        "stage": "E1",
+        "label": "SFT (Base+LoRA, 400 步)",
+        "path": "experiments/eval/sft-v3-ckpt400-dev500.jsonl",
+        "train_data": "官方 CoT 6973 条",
+        "note": "dev-500 基准",
+    },
+    {
+        "key": "rft_300q",
+        "stage": "E2b",
+        "label": "RFT (起点 SFT, 286 题)",
+        "path": "experiments/eval/rft-300q-dev500.jsonl",
+        "train_data": "自采正确解 286 条（286 题）",
+        "note": "扩样 RFT，dev-500 重评",
+    },
+    {
+        "key": "dpo_300q",
+        "stage": "E3c",
+        "label": "DPO (起点 SFT, 79 对)",
+        "path": "experiments/eval/dpo-300q-dev500.jsonl",
+        "train_data": "79 对偏好数据",
+        "note": "目前最高分，dev-500 重评",
+    },
+]
+
+VARIANTS = {"dev200": RUNS_DEV200, "dev500": RUNS_DEV500}
+
+
 def load_rows(path: Path) -> dict[str, dict]:
     """读 jsonl，按 id 建索引。"""
     rows: dict[str, dict] = {}
@@ -143,7 +174,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="从评测 jsonl 重算主表")
     parser.add_argument("--output-dir", type=Path, default=REPO_ROOT / "results")
     parser.add_argument("--reference", default="sft", help="配对检验的参照 run key")
+    parser.add_argument("--variant", choices=sorted(VARIANTS), default="dev200",
+                        help="dev200=九档全量；dev500=三个关键档的 500 题重评")
     args = parser.parse_args()
+
+    runs = VARIANTS[args.variant]
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -152,7 +187,7 @@ def main() -> int:
     scores: dict[str, dict[str, bool]] = {}
     ids: dict[str, set[str]] = {}
 
-    for run in RUNS:
+    for run in runs:
         path = REPO_ROOT / run["path"]
         entry = {
             "key": run["key"],
@@ -206,7 +241,7 @@ def main() -> int:
     ref_key = args.reference
     if ref_key in scores:
         ref_scores = scores[ref_key]
-        for run in RUNS:
+        for run in runs:
             key = run["key"]
             if key == ref_key or key not in scores:
                 continue
@@ -230,9 +265,10 @@ def main() -> int:
     # --- 写 summary.json ---
     payload = {
         "dataset": DATASET,
-        "split": "dev-200",
+        "split": args.variant,
         "decoding": "greedy, batch_size=1",
         "reference_run": ref_key,
+        "variant": args.variant,
         "runs": summaries,
         "pairwise_vs_reference": pairwise,
     }
