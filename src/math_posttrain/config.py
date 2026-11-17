@@ -33,6 +33,25 @@ DPO_TRAINING_KEYS = (
 )
 
 
+# GRPO 需要 prompt_file（只给 prompt + 参考答案，答案仅用于算规则奖励）。
+GRPO_TRAINING_KEYS = (
+    "output_dir",
+    "prompt_file",
+    "per_device_train_batch_size",
+    "gradient_accumulation_steps",
+    "learning_rate",
+    "num_train_epochs",
+    "logging_steps",
+    "save_strategy",
+    "seed",
+)
+
+_TASK_TRAINING_KEYS = {
+    "dpo": DPO_TRAINING_KEYS,
+    "grpo": GRPO_TRAINING_KEYS,
+}
+
+
 def load_config(path: str | Path) -> dict[str, Any]:
     config_path = Path(path)
     if not config_path.exists():
@@ -44,7 +63,9 @@ def load_config(path: str | Path) -> dict[str, Any]:
         values = data.get(section)
         if not isinstance(values, dict):
             raise ValueError(f"config missing section: {section}")
-        required = DPO_TRAINING_KEYS if (section == "training" and data.get("task") == "dpo") else keys
+        required = keys
+        if section == "training":
+            required = _TASK_TRAINING_KEYS.get(str(data.get("task") or "sft"), keys)
         for key in required:
             if key not in values:
                 raise ValueError(f"config missing {section}.{key}")

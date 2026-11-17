@@ -1,0 +1,57 @@
+# E4 GRPO（可验证奖励的在线 RL）。
+#
+# 起点是 SFT adapter，与 RFT 平行对比：
+#   RFT  : 离线采样 120 题 × k=4 → 只留正确解 → SFT 式再训
+#   GRPO : 在线采样，每题生成 num_generations 个解，用「答案是否正确」当奖励
+#
+# 为什么 beta=0：不需要 KL 项就不必加载 ref model，16GB 卡上省约一半显存；
+# 奖励是规则型 0/1（公开答案判定），不存在 reward model 被 hack 的问题，
+# 但若发现模型学会「只写答案不写推理」，再把 beta 调到 0.04 加约束。
+task: grpo
+model:
+  path: /data/models/Qwen3-4B-Base
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-sft-v3/checkpoint-400
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/grpo/qwen3-4b-gsm8k-grpo
+  dataset: gsm8k
+  prompt_file: data/processed/sft/gsm8k-train.raw.jsonl
+  num_prompts: 120
+  # 每题采 4 个解算组内相对优势；effective batch = batch 1 × accum 4 = 4 = num_generations
+  num_generations: 4
+  max_completion_length: 384
+  temperature: 0.9
+  beta: 0.0
+  scale_rewards: group
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 1.0e-5
+  num_train_epochs: 1
+  max_steps: 30
+  warmup_ratio: 0.05
+  lr_scheduler_type: cosine
+  logging_steps: 2
+  save_strategy: steps
+  save_steps: 15
+  save_total_limit: 2
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42

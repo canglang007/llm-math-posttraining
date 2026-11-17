@@ -180,3 +180,12 @@
 - **诊断方法**：train_loss 精确等于 ln(2) 是「policy 与 ref 完全相同」的签名——先怀疑梯度断流（prepare_model_for_kbit_training 已有），再看 2 步 × 5e-6 更新量级，锁定学习率。rewards 精确 0.0 而非接近 0 是关键区分线索。
 - **评测中**：RFT/DPO dev-200 串行评测 21:33 启动，与 Base/SFT 同口径（greedy、batch=1、dev 200），跑完出四档主表。
 - **讲法**：DPO 这一课的价值是「训练完成 ≠ 训练有效」——rewards/accuracies 与 loss 相对理论初值 ln(2) 的位置是 DPO 是否生效的判据，比看 loss 下降更根本。
+
+## 2026-11-17 08:05 RFT 差异不显著判定 + 新增 GRPO（E4）（Asia/Shanghai UTC+8）
+
+- **RFT vs SFT 逐题配对分析**（dev-200 同批题，同一判分口径）：都对 155、仅 SFT 对 14、仅 RFT 对 8、都错 23；**McNemar 精确检验 p≈0.286（不显著）**，翻转率 11.0%。仅 SFT 对的 14 题里 0 题是抽取失败，全是真算错——不是格式退化。结论：RFT 的 -3.0pt 在噪声范围内，**不能据此否定 RFT，更可能瓶颈在离线数据量（412 条 = SFT 的 6%）**。
+- **新增 GRPO（scripts/train_grpo.py + configs/grpo_qwen3_4b_16gb.yaml）**：起点用 SFT adapter（不用 RFT，避免污染对比）；奖励 = 答案是否正确（0/1，公开答案判定，符合数据纪律）；`beta=0` 不加载 ref model 省显存；数据用 train 前 120 题（与 RFT 采样同批，保证可比）。
+- **config.py 扩展**：新增 `task: grpo` 的必需键（prompt_file 替代 train_file），单测 63 passed。
+- **GRPO 冒烟一次通过**（无 TRL API 问题），关键发现：`frac_reward_zero_std` 是 GRPO 的核心健康指标——组内候选全对/全错时优势为 0、不产生梯度。正式训练 30 步均值约 0.67（约 1/3 组有信号），train_loss 0.034，12 分钟完成。
+- **讲到的方法论**：GRPO 的价值在于「在线采样 + 可验证奖励」绕开离线数据量瓶颈；它的效率天花板由「题目难度 vs 模型能力的匹配度」决定——SFT 已 85% 正确率时，多数组无区分度，这是规模问题不是算法问题。
+- **待办**：DPO/GRPO 的 dev-200 评测并行进行中；跑完出五档主表（Base/SFT/RFT/DPO/GRPO）。
