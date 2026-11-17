@@ -1,0 +1,51 @@
+# E2c RFT（从 Base 直接自举）：检验「RFT 是否必须从 SFT 出发」。
+#
+# 设计：与 E2b（SFT → RFT）逐项对齐，唯一变化是**起点**——
+#   - E2b: base_adapter = sft-v3/checkpoint-400，训练数据 = SFT 采的 286 条
+#   - E2c: 无 base_adapter（纯 Base），训练数据 = Base 自己采的 287 条
+# 两者的数据量几乎相同（286 vs 287 题、每题 1 条），因此差异可归因到
+# 「起点能力」+「自采样解的质量（Base 的解平均 507 字符、13.3% 抽取失败）」。
+#
+# 已知风险（写在前面，便于事后核对）：
+#   1. Base 的解更啰嗦、格式更不稳，训练后可能把啰嗦固化；
+#   2. Base 的候选正确率 74.2%（SFT 84.6%），能进训练集的解本身质量更低；
+#   3. 预期落在 Base(0.770) 与 SFT(0.845) 之间，且抽取失败率高于 SFT 的 0.5%。
+task: sft
+model:
+  path: /data/models/Qwen3-4B-Base
+  # 刻意不设 base_adapter：从 Base 直接开始（全新 LoRA）
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/rft/qwen3-4b-gsm8k-rft-base-300q
+  train_file: data/processed/rft/gsm8k-train-rft-base-300q.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 5
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42
