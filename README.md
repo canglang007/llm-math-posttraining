@@ -119,6 +119,7 @@ scripts/
   build_preference_data.py       构造 RFT / DPO 数据
   build_hard_subset.py           按「正确候选数」筛出有区分度的题
   summarize_results.py           从评测 jsonl 重算主表 + McNemar 配对检验 → results/
+  audit_data_integrity.py        数据纪律审计：泄漏、唯一 id、评测集合一致性
   analyze_sampling.py            maj@k / oracle / 选择性预测，出表与曲线
   analyze_e0_failures.py         E0 失败分类
   diag_eos_loss.py               一次前向诊断停止符 loss / argmax 排名（停不下来的元凶）
@@ -140,6 +141,7 @@ configs/
 
 results/
   summary.json / summary.csv / pairwise.csv   主表的机器可读版本（脚本生成，勿手改）
+  data-audit.json                数据纪律审计结果（泄漏 / 唯一 id / 评测一致性）
 
 docs/
   main-results.md                六档主表、配对检验、三条结论

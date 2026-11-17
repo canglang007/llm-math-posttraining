@@ -1,0 +1,82 @@
+{
+  "files": {
+    "train(清洗后)": {
+      "status": "OK",
+      "path": "data/processed/sft/gsm8k-train.jsonl",
+      "rows": 6973,
+      "unique_ids": 6973,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
+    "dev(清洗后)": {
+      "status": "OK",
+      "path": "data/processed/sft/gsm8k-dev.raw.jsonl",
+      "rows": 500,
+      "unique_ids": 500,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
+    "train(原始)": {
+      "status": "OK",
+      "path": "data/processed/sft/gsm8k-train.raw.jsonl",
+      "rows": 6973,
+      "unique_ids": 6973,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
+    "采样 120 题": {
+      "status": "OK",
+      "path": "experiments/sampling/gsm8k-train120-k4-t0.7.jsonl",
+      "rows": 120,
+      "unique_ids": 120,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
+    "RFT 数据": {
+      "status": "OK",
+      "path": "data/processed/rft/gsm8k-train-rft.jsonl",
+      "rows": 412,
+      "unique_ids": 114,
+      "duplicated_ids": 111,
+      "avg_rows_per_id": 3.61
+    },
+    "DPO 数据": {
+      "status": "OK",
+      "path": "data/processed/dpo/gsm8k-train-dpo.jsonl",
+      "rows": 26,
+      "unique_ids": 26,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
+    "hard26": {
+      "status": "OK",
+      "path": "data/processed/sft/gsm8k-train-hard26.raw.jsonl",
+      "rows": 26,
+      "unique_ids": 26,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    }
+  },
+  "leakage": {
+    "train(清洗后)": 0,
+    "采样 120 题": 0,
+    "RFT 数据": 0,
+    "DPO 数据": 0,
+    "hard26": 0
+  },
+  "provenance": {
+    "采样 120 题": 0,
+    "RFT 数据": 0,
+    "DPO 数据": 0,
+    "hard26": 0
+  },
+  "eval_sets": {
+    "summary": {
+      "all_same_question_set": true,
+      "subset_of_dev": true,
+      "overlap_with_train": 0,
+      "questions": 200
+    }
+  },
+  "passed": true
+}
