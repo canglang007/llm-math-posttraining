@@ -1,10 +1,42 @@
 # LLM Math Post-Training
 
-一个独立的大模型后训练项目：面向教育场景的私有化数学推理解题助手，用公开 GSM8K/MATH 数据做 SFT、拒绝采样和偏好优化。
+一个独立的大模型后训练项目：面向教育场景的私有化数学推理解题助手，用公开 GSM8K/MATH 数据做 SFT、
+拒绝采样微调（RFT）、DPO 与 GRPO 偏好优化。
 
-这个项目与已有的 Agent 项目分开，不包含 agent、tool calling、user simulator 或 benchmark 复现。目标是展示**数据构造、SFT、RFT/DPO、评测和失败分析**的完整链路。
+这个项目与已有的 Agent 项目分开，不包含 agent、tool calling、user simulator 或 benchmark 复现。目标是展示**数据构造、SFT、RFT/DPO/GRPO、评测、统计检验和失败分析**的完整链路。
 
-## 主要结果（推理时验证，2026-11-15）
+## 主结果一：训练链路（GSM8K dev-200，greedy，同口径）
+
+六个模型全部在**同一批 200 题、同一判分函数、batch=1 greedy** 下评测，
+表格由 `scripts/summarize_results.py` 从原始预测 jsonl 重算（`results/`），不是手抄。
+
+| 阶段 | 模型 | 准确率 | 抽取失败 | 训练数据 | vs SFT | McNemar p |
+|---|---|---|---|---|---|---|
+| E0 | Qwen3-4B-Base | 0.770 (154/200) | 27 (13.5%) | — | −7.5pt | **0.036** |
+| E1 | **SFT**（Base+LoRA，400 步） | **0.845 (169/200)** | **1 (0.5%)** | 官方 CoT 6973 条 | 基准 | — |
+| E2 | RFT（起点 SFT） | 0.815 (163/200) | 0 | 自采正确解 412 条 | −3.0pt | 0.286 |
+| E3a | DPO（起点 RFT，链式） | 0.845 (169/200) | 0 | 26 对偏好数据 | 0 | — |
+| E3b | **DPO（起点 SFT，平行）** | **0.860 (172/200)** | 0 | 26 对偏好数据 | +1.5pt | 0.581 |
+| E4 | GRPO（起点 SFT，全量 120 题） | 0.850 (170/200) | 0 | 在线采样 + 答案规则奖励 | +0.5pt | 1.000 |
+| E4b | GRPO（起点 SFT，仅 26 道难题） | 0.835 (167/200) | 0 | 难度筛选后在线采样 | −1.0pt | 0.688 |
+
+三条后训练分支（RFT / DPO / GRPO）**全部从同一个 SFT checkpoint-400 出发**，
+差异才能归因到方法本身，而不是上游起点不同。
+
+**三个结论**：
+
+1. **只有 SFT 带来统计显著的提升**（+7.5pt，p=0.036；抽取失败 13.5%→0.5%）。
+   三种后训练方法相对 SFT 全部落在噪声内（p>0.28），而 dev-200 的分辨率上限就是 ±2.8pt
+   ——200 题本身分不出 1.5pt 的效应。
+2. **链式不如平行**：SFT→DPO 0.860，SFT→RFT→DPO 0.845。上游退化会被下游继承。
+3. **瓶颈在数据规模与难度匹配，不在算法**：120 道采样题里 73% 模型 4 条候选全对，
+   GRPO 组内优势恒 0（`frac_reward_zero_std≈0.67`）；只保留 26 道有区分度的题后
+   训练信号确实变强（zero_std 0.33、reward 0.5→0.75），但 dev 反而 0.835——26 题只够过拟合。
+
+完整表、配对四格、负结果分析见 **`docs/main-results.md`**；
+每个产物的位置与复现命令见 **`docs/experiment-artifacts.md`**。
+
+## 主结果二：推理时验证（2026-11-15）
 
 模型冻结、不做任何训练，只加推理时计算：Qwen3-4B-Base 在 GSM8K dev 200 题上每题采样 8 条，
 把 `####` 后的答案归一化后投票。
@@ -23,18 +55,32 @@
 完整的表、增益分解、失败案例与负结果见 **`docs/first-sampling-results.md`**；
 可离线打开的演示页见 `demo/index.html`。
 
-## 当前状态
+## 当前状态（2026-11-17）
 
-- 项目骨架、数据格式、答案抽取、prompt 构造、评测和切分工具已建立；
-- 50 个单测通过（本机需加 `--basetemp=/tmp/mpt-pytest`，沙箱会拦 pytest 的临时目录创建）；
+**主线已闭环**：Base → SFT → 三条后训练分支（RFT / DPO / GRPO）全部训完并同口径评测，
+出六档主表（见上），代码、配置、结论全部入库。
+
+- 63 个单测通过（本机需加 `--basetemp=/tmp/mpt-pytest`，沙箱会拦 pytest 的临时目录创建）；
 - GSM8K：train 7473 / test 1319；MATH：train 7498 / test 5000（2 条无 boxed 答案已跳过）；
 - SFT 数据：GSM8K 6973 train / 500 dev，MATH 6998 train / 500 dev；
-- E0 baseline（dev 200 题，`--batch-size 1`）：pass@1 0.77、抽取失败 27（13.5%）；
-- 推理时验证：dev 200 × k=8 采样 52 分钟出第一张结果表（见上）；`scripts/run_sampling.py` 采样、`scripts/analyze_sampling.py` 出表与曲线、`scripts/build_demo.py` 生成 demo；
-- E1 pilot SFT（200 步）已完成但**三层诊断确认退化**（0.46 epoch 欠拟合），不能与 E0 对比；训练已从主线降为加分项（原因见 `docs/pivot-plan.md`）；
-- QLoRA SFT 训练脚本与 12GB/24GB 配置、RFT/DPO 数据构造器均已实现并在小样本验证；
-- GPU 服务器（RTX 4060 Ti 16GB）工作区 `/data/llm-math-posttraining`，`/data` 为持久卷，恢复清单见 handoff 第 9 节；
-- 调试与决策过程见 `docs/interview-debug-journal.md`（面试用）。
+- 训练与评测脚本：`train_sft.py`（SFT/RFT 共用）、`train_dpo.py`、`train_grpo.py`、`evaluate_model.py`；
+- 数据引擎：`run_sampling.py`（逐题落盘 + `--resume` 断点续跑）、`expand_sampling_candidates.py`、
+  `build_preference_data.py`、`build_hard_subset.py`（按难度筛题）；
+- 汇总：`summarize_results.py` 从原始 jsonl 重算主表与 McNemar 配对检验，产物在 `results/`。
+
+**两个关键 bug 的修复（都写进了 issue-log）**：
+
+- **停止符**：Qwen3-Base 预训练里从未出现 `<|im_end|>`，ChatML SFT 一边压掉它旧会用的
+  `<|endoftext|>`、一边教不会新的，导致生成跑满 512 token、抽取失败 13.5%。
+  修复是把训练目标末尾的 `<|im_end|>` 换成 `<|endoftext|>`，推理侧零改动 → 抽取失败降到 0.5%。
+- **DPO 学习率**：LoRA 上沿用全参数 DPO 的 `5e-6`，2 步训练参数完全没动
+  （loss 恒为 ln(2)、`rewards/margins` 精确为 0）。改 `5e-5` + 3 epochs 后偏好学习才真正生效。
+
+**服务器**：GPU 实例已于 2026-11-17 释放，`/data` 持久卷已保存（6 个 adapter、数据、评测结果、日志）。
+本地保留代码 + 评测 jsonl + 汇总；**RFT/DPO 训练数据与训练日志只在持久卷**，
+缺口清单与恢复命令见 `docs/experiment-artifacts.md`。
+
+调试与决策过程见 `docs/interview-debug-journal.md` 与 `docs/issue-log.md`（面试用）。
 
 ## 原则
 
@@ -61,29 +107,53 @@ src/math_posttrain/
   inference_time.py 多数投票、oracle pass@k、成本估算
 
 scripts/
-  prepare_data.py          下载 GSM8K/MATH（带 provenance）
-  eval_predictions.py      对预测 JSONL 做评测
-  build_sft_data.py        生成 SFT 数据（可切 dev）
-  build_preference_data.py 生成 RFT/DPO 数据
-  train_sft.py             QLoRA SFT 训练
-  evaluate_model.py        生成预测并算 pass@1
-  run_sampling.py          推理时验证：每题采样 k 条候选（GPU）
-  analyze_sampling.py      maj@k / oracle / 选择性预测，出表与曲线
-  build_demo.py            生成离线 demo 页（demo/index.html）
+  prepare_data.py                下载 GSM8K/MATH（带 provenance）
+  eval_predictions.py            对预测 JSONL 做评测
+  build_sft_data.py              生成 SFT 数据（可切 dev）
+  train_sft.py                   QLoRA SFT 训练（RFT 复用同一脚本）
+  train_dpo.py                   DPO 训练（TRL）
+  train_grpo.py                  GRPO 训练（在线采样 + 答案规则奖励）
+  evaluate_model.py              生成预测并算 pass@1
+  run_sampling.py                每题采样 k 条候选（逐题落盘、--resume、进度带 ETA）
+  expand_sampling_candidates.py  采样结果展开 + 按公开答案打标
+  build_preference_data.py       构造 RFT / DPO 数据
+  build_hard_subset.py           按「正确候选数」筛出有区分度的题
+  summarize_results.py           从评测 jsonl 重算主表 + McNemar 配对检验 → results/
+  analyze_sampling.py            maj@k / oracle / 选择性预测，出表与曲线
+  analyze_e0_failures.py         E0 失败分类
+  diag_eos_loss.py               一次前向诊断停止符 loss / argmax 排名（停不下来的元凶）
+  diag_stop_behavior.py          逐题观察生成是否正常停止
+  verify_weighted_loss.py        校验加权 loss 实现
+  replay_truncation_fix.py       回放截断修复
+  watch_training.py              训练日志进度监控
+  build_demo.py                  生成离线 demo 页（demo/index.html）
 
 configs/
-  sft_qwen3_4b_24gb.yaml   seq 4096 / r16
-  sft_qwen3_4b_12gb.yaml   seq 2048 / r8
+  sft_qwen3_4b_12gb_v3.yaml     主线 SFT（seq 2048 / r8 / 400 步，停止符修好后的版本）
+  sft_qwen3_4b_24gb.yaml        seq 4096 / r16
+  sft_qwen3_4b_12gb.yaml        最早版（已被 v3 取代）
+  rft_qwen3_4b_12gb.yaml        拒绝采样微调（起点 sft-v3）
+  dpo_qwen3_4b_12gb.yaml        DPO（起点 sft-v3，lr 5e-5）
+  grpo_qwen3_4b_16gb.yaml       GRPO 全量 120 题
+  grpo_hard26_16gb.yaml         GRPO 难度筛选 26 题（E4b 对照）
+  sft_qwen3_4b_12gb_{pilot,pilot_v2,eosfix,stopfix}.yaml  历史失败实验（保留作证据）
+
+results/
+  summary.json / summary.csv / pairwise.csv   主表的机器可读版本（脚本生成，勿手改）
 
 docs/
-  handoff.md                新会话交接（自包含）
-  project-charter.md        项目背景、目标、非目标
-  experiment-design.md      数据、方法、实验矩阵、指标
-  data-provenance.md        数据来源、许可证、切分、污染说明
-  issue-log.md              问题记录（只追加）
-  interview-debug-journal.md 面试用调试与决策实录（A/B 数据、反转、讲法）
-  first-sampling-results.md 推理时验证第一张结果表（主表、分解、负结果）
-  pivot-plan.md             为什么把训练移出关键路径
+  main-results.md                六档主表、配对检验、三条结论
+  experiment-artifacts.md        产物在哪、怎么复现、缺什么
+  handoff.md                     新会话交接（自包含）
+  project-charter.md             项目背景、目标、非目标
+  experiment-design.md           数据、方法、实验矩阵、指标
+  data-provenance.md             数据来源、许可证、切分、污染说明
+  eos-stop-diagnosis.md          停止符根因诊断与 E1 结果
+  issue-log.md                   问题记录（只追加）
+  interview-debug-journal.md     面试用调试与决策实录（A/B 数据、反转、讲法）
+  first-sampling-results.md      推理时验证第一张结果表（主表、分解、负结果）
+  e0-failure-analysis.md         E0 失败案例分析
+  mainline-plan.md / pivot-plan.md  主线规划与转向记录
 ```
 
 ## 快速开始
@@ -192,13 +262,19 @@ python scripts/evaluate_model.py \
 
 如果 Base tokenizer 没有 chat template，训练/评测会自动使用 Qwen ChatML fallback。
 
-## 下一步
+## 下一步（按收益排序）
 
-主线（推理时验证）已闭环出表，接下来按收益排序：
+主线已闭环，剩下的都是"把结论做硬"和"补全证据链"：
 
-1. **温度对照**：T=1.0 / k=8 与 T=0.7 对比，看多样性是否抬高 oracle、是否拖低 maj；
-2. **验证器增强**：maj@8 与 oracle pass@8 之间还剩 4.5 点。免费规则（长度、出现顺序、长度加权、相对长度过滤）已实测全部无效，
-   下一步需要真正的 verifier / PRM 重排，或继续加大 k 看曲线是否饱和；
-3. **选择性预测二维化**：一致度 + 长度/格式完整度，给教育场景更细的「自动批改 / 转人工」阈值；
-4. **SFT（加分项）**：换 `QWEN_CHATML_TEMPLATE` 去掉 Qwen3 注入的空 `<think>` 块，重跑 pilot 或全量 2 epochs；
-5. **test 最终评测**：主线方法在 test 上各评一次（1319 题，只评一次）。
+1. **补齐数据完整性**：拉回 E3a（DPO 链式）的逐题结果、RFT/DPO 训练数据、训练日志到本地，
+   清单见 `docs/experiment-artifacts.md` 第四节；
+2. **扩 dev 到 500 题重评六档**：分辨率从 ±2.8pt 提到 ±1.8pt，才能判定 DPO 的 +1.5pt 是真效应还是抖动
+   （成本约 7 小时，6 个模型 × 500 题）；
+3. **扩大采样规模重跑 RFT**：现有 RFT 只用了 412 条（SFT 数据量的 6%），
+   扩到 300~500 题 × k=4 才能验证"瓶颈在数据量"这个判断；
+4. **test 最终评测**：主线方法在 test 上各评一次（1319 题，只评一次，不参与任何调参）；
+5. **MATH 扩展**（加分项）：MATH 数据已备好（6998 train / 500 dev），
+   用来检验结论是否能从 GSM8K 迁移到更难的分布。
+
+推理时验证那一路（maj@k、选择性预测）已经出表，若要继续，
+方向在 `docs/first-sampling-results.md` 的"下一步"里（温度对照、verifier 重排）。
