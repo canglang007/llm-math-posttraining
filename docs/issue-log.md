@@ -189,3 +189,10 @@
 - **GRPO 冒烟一次通过**（无 TRL API 问题），关键发现：`frac_reward_zero_std` 是 GRPO 的核心健康指标——组内候选全对/全错时优势为 0、不产生梯度。正式训练 30 步均值约 0.67（约 1/3 组有信号），train_loss 0.034，12 分钟完成。
 - **讲到的方法论**：GRPO 的价值在于「在线采样 + 可验证奖励」绕开离线数据量瓶颈；它的效率天花板由「题目难度 vs 模型能力的匹配度」决定——SFT 已 85% 正确率时，多数组无区分度，这是规模问题不是算法问题。
 - **待办**：DPO/GRPO 的 dev-200 评测并行进行中；跑完出五档主表（Base/SFT/RFT/DPO/GRPO）。
+
+## 2026-11-17 08:12 后训练三分支统一从 SFT 出发 + GRPO 难度筛选实验（Asia/Shanghai UTC+8）
+
+- **用户决策**：DPO 也从 SFT 出发（原为从 RFT 续做），使 RFT / DPO / GRPO 三条分支全部平行于同一 SFT checkpoint-400，A2 消融的归因才干净。旧「从 RFT 出发」的 DPO 成绩单列附注，不作为主表口径。配置：base_adapter=sft-v3/checkpoint-400，output_dir=experiments/dpo/qwen3-4b-gsm8k-dpo-from-sft。
+- **GRPO 效率瓶颈量化**（120 题 × k=4，SFT 模型）：4/4 全对 88 题 (73%)、3/4 11 题、2/4 12 题、1/4 3 题、0/4 6 题。只有 26 题（21.7%）有区分度 —— 全对/全错的题组内优势恒 0，不产生梯度，这是 `frac_reward_zero_std ≈ 0.67` 的直接原因。
+- **新增 scripts/build_hard_subset.py**：按「正确候选数」筛题（min/max 可调），逻辑固化为可复现脚本而非一次性命令；产物 gsm8k-train-hard26.raw.jsonl 与 raw 格式同构，可直接作 GRPO prompt_file。
+- **新增 E4b 对照**（configs/grpo_hard26_16gb.yaml）：全量 120 题（73% 无梯度）vs 26 道有区分度的题（题题有梯度），两者之差即「题目难度与模型能力匹配度」对 RL 的单独贡献。这是数据引擎能力的延伸，不是新方向。

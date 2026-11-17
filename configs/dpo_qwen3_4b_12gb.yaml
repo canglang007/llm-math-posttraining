@@ -6,8 +6,10 @@
 task: dpo
 model:
   path: /data/models/Qwen3-4B-Base
-  # DPO 的起点：先 RFT adapter，跑通后再对比「从 SFT 直接 DPO」。
-  base_adapter: experiments/rft/qwen3-4b-gsm8k-rft
+  # 起点固定为 SFT adapter：与 RFT、GRPO 三条分支全部从同一 SFT 出发，
+  # 这样「RFT vs DPO vs GRPO」的差异才能干净归因到方法本身（A2 消融）。
+  # 早期版本曾从 RFT 续做（链式），其成绩单列为附注，不作为主表口径。
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-sft-v3/checkpoint-400
   load_in_4bit: true
   compute_dtype: bfloat16
   max_seq_len: 1024
@@ -28,7 +30,7 @@ lora:
     - down_proj
 
 training:
-  output_dir: experiments/dpo/qwen3-4b-gsm8k-dpo
+  output_dir: experiments/dpo/qwen3-4b-gsm8k-dpo-from-sft
   preference_file: data/processed/dpo/gsm8k-train-dpo.jsonl
   beta: 0.1
   per_device_train_batch_size: 1
