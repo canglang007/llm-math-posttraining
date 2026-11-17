@@ -196,3 +196,10 @@
 - **GRPO 效率瓶颈量化**（120 题 × k=4，SFT 模型）：4/4 全对 88 题 (73%)、3/4 11 题、2/4 12 题、1/4 3 题、0/4 6 题。只有 26 题（21.7%）有区分度 —— 全对/全错的题组内优势恒 0，不产生梯度，这是 `frac_reward_zero_std ≈ 0.67` 的直接原因。
 - **新增 scripts/build_hard_subset.py**：按「正确候选数」筛题（min/max 可调），逻辑固化为可复现脚本而非一次性命令；产物 gsm8k-train-hard26.raw.jsonl 与 raw 格式同构，可直接作 GRPO prompt_file。
 - **新增 E4b 对照**（configs/grpo_hard26_16gb.yaml）：全量 120 题（73% 无梯度）vs 26 道有区分度的题（题题有梯度），两者之差即「题目难度与模型能力匹配度」对 RL 的单独贡献。这是数据引擎能力的延伸，不是新方向。
+
+## 2026-11-17 08:40 把 tmux 装进持久卷（换实例不用重装）（Asia/Shanghai UTC+8）
+
+- **问题**：每次换 GPU 实例，新容器的 `/usr/bin/tmux` 都不存在（实例盘重置），要重新 `apt-get install`，耗时且依赖网络/权限；而长任务监控全靠 tmux，没它就没法后台跑。
+- **解法**：`conda install -c conda-forge tmux` 装进 `/data/miniconda`——整个 miniconda 在持久卷上，因此 tmux 随卷持久。验证：`/data/miniconda/bin/tmux` = 3.6a（比 apt 的 3.4 新），创建/ls/kill 功能正常；`libtinfo.so.6: no version information available` 只是 stderr 噪音，不影响使用。
+- **用法**：开机后 `export PATH=/data/miniconda/bin:$PATH`，或用绝对路径 `/data/miniconda/bin/tmux`。注意 tmux **server socket 在 /tmp（实例盘）**，所以会话本身仍会随实例消失，持久化的只是二进制——这符合预期：跨实例保留的应是日志和产物（都在 /data），不是进程。
+- **顺带发现**：三个评测并行时 GPU 利用率从 16% 升到 96%。此前单进程评测 GPU 长期空闲（瓶颈在 CPU 侧逐 token 处理），并行正好填满算力空档——**并行不是只省等待时间，实际吞吐也更高**。这条对后续评测排期有指导意义。
