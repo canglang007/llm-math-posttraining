@@ -1,0 +1,78 @@
+{
+  "dataset": "gsm8k",
+  "split": "dev500",
+  "decoding": "greedy, batch_size=1",
+  "reference_run": "sft",
+  "variant": "dev500",
+  "runs": [
+    {
+      "key": "sft",
+      "stage": "E1",
+      "label": "SFT (Base+LoRA, 400 步)",
+      "path": "experiments/eval/sft-v3-ckpt400-dev500.jsonl",
+      "train_data": "官方 CoT 6973 条",
+      "note": "dev-500 基准",
+      "status": "OK",
+      "questions": 500,
+      "correct": 429,
+      "accuracy": 0.858,
+      "extract_fail": 0,
+      "extract_fail_rate": 0.0,
+      "avg_chars": 272.7
+    },
+    {
+      "key": "rft_300q",
+      "stage": "E2b",
+      "label": "RFT (起点 SFT, 286 题)",
+      "path": "experiments/eval/rft-300q-dev500.jsonl",
+      "train_data": "自采正确解 286 条（286 题）",
+      "note": "扩样 RFT，dev-500 重评",
+      "status": "OK",
+      "questions": 500,
+      "correct": 431,
+      "accuracy": 0.862,
+      "extract_fail": 0,
+      "extract_fail_rate": 0.0,
+      "avg_chars": 244.6
+    },
+    {
+      "key": "dpo_300q",
+      "stage": "E3c",
+      "label": "DPO (起点 SFT, 79 对)",
+      "path": "experiments/eval/dpo-300q-dev500.jsonl",
+      "train_data": "79 对偏好数据",
+      "note": "目前最高分，dev-500 重评",
+      "status": "OK",
+      "questions": 500,
+      "correct": 434,
+      "accuracy": 0.868,
+      "extract_fail": 0,
+      "extract_fail_rate": 0.0,
+      "avg_chars": 267.4
+    }
+  ],
+  "pairwise_vs_reference": [
+    {
+      "run": "rft_300q",
+      "reference": "sft",
+      "shared_questions": 500,
+      "both_correct": 409,
+      "only_run": 22,
+      "only_reference": 20,
+      "both_wrong": 49,
+      "delta_pt": 0.4,
+      "mcnemar_p": 0.8776
+    },
+    {
+      "run": "dpo_300q",
+      "reference": "sft",
+      "shared_questions": 500,
+      "both_correct": 411,
+      "only_run": 23,
+      "only_reference": 18,
+      "both_wrong": 48,
+      "delta_pt": 1.0,
+      "mcnemar_p": 0.5327
+    }
+  ]
+}

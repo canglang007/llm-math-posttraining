@@ -56,6 +56,9 @@
 | E4b GRPO-hard26 | `experiments/eval/grpo-hard26-dev200.jsonl` | ✅ |
 | E2b RFT-300q | `experiments/eval/rft300q-dev200.jsonl` | ✅ |
 | E3c DPO-300q | `experiments/eval/dpo300q-dev200.jsonl` | ✅ |
+| E1 SFT (dev-500) | `experiments/eval/sft-v3-ckpt400-dev500.jsonl` | ✅ |
+| E2b RFT-300q (dev-500) | `experiments/eval/rft-300q-dev500.jsonl` | ✅ |
+| E3c DPO-300q (dev-500) | `experiments/eval/dpo-300q-dev500.jsonl` | ✅ |
 
 **九档全部有本地逐题文件**，`summarize_results.py` 可完整重算，无 MISSING。
 
@@ -64,6 +67,7 @@
 - `results/summary.csv` — 贴表格用
 - `results/pairwise.csv` — 逐 run 的 McNemar 配对四格
 - `results/data-audit.json` — 数据纪律审计的结构化结果（泄漏、唯一 id、评测一致性）
+- `results/dev500/` — dev-500 变体的 summary/pairwise（`--variant dev500` 生成）
 
 **重算方式**（数字不靠手抄）：
 
@@ -86,7 +90,7 @@ python scripts/summarize_results.py --output-dir results
 | 扩样（2026-11-17） | `rft300-sampling.log`（300 题采样）、`rft300-train.log`（36 步）、`rft300-eval.log`、`dpo300-train.log`（30 步）、`dpo300-eval.log` |
 
 （服务器 `/data/*.log` 上还留着早期 pilot/测速日志，未逐份备份，结论已进 issue-log。）
-扩样实验的 5 份日志也已一并备份（`rft300-*`、`dpo300-*`）。
+扩样实验的 5 份日志（`rft300-*`、`dpo300-*`）与 dev-500 的 3 份评测日志（`dev500-*`）也已备份。
 
 ## 五、数据纪律审计（2026-11-17 16:45，PASS）
 

@@ -1,0 +1,3 @@
+run,vs,shared,both_correct,only_run,only_ref,both_wrong,delta_pt,mcnemar_p
+rft_300q,sft,500,409,22,20,49,0.4,0.8776
+dpo_300q,sft,500,411,23,18,48,1.0,0.5327

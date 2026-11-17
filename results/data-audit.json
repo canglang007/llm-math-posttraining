@@ -106,6 +106,12 @@
       "subset_of_dev": true,
       "overlap_with_train": 0,
       "questions": 200
+    },
+    "dev500_summary": {
+      "all_same": true,
+      "subset_of_dev": true,
+      "overlap_with_train": 0,
+      "covers_dev200": true
     }
   },
   "passed": true

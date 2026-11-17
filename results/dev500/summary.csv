@@ -1,0 +1,4 @@
+stage,key,label,status,questions,correct,accuracy,extract_fail,avg_chars,train_data,path
+E1,sft,"SFT (Base+LoRA, 400 步)",OK,500,429,0.858,0,272.7,官方 CoT 6973 条,experiments/eval/sft-v3-ckpt400-dev500.jsonl
+E2b,rft_300q,"RFT (起点 SFT, 286 题)",OK,500,431,0.862,0,244.6,自采正确解 286 条（286 题）,experiments/eval/rft-300q-dev500.jsonl
+E3c,dpo_300q,"DPO (起点 SFT, 79 对)",OK,500,434,0.868,0,267.4,79 对偏好数据,experiments/eval/dpo-300q-dev500.jsonl

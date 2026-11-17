@@ -51,6 +51,13 @@ EVAL_FILES: dict[str, str] = {
     "dpo_300q": "experiments/eval/dpo300q-dev200.jsonl",
 }
 
+# dev-500 评测（500 题，与 dev-200 不是同一批，单独校验：组内一致 + ⊆ dev + ⊇ dev200）
+EVAL_FILES_500: dict[str, str] = {
+    "sft(500)": "experiments/eval/sft-v3-ckpt400-dev500.jsonl",
+    "rft_300q(500)": "experiments/eval/rft-300q-dev500.jsonl",
+    "dpo_300q(500)": "experiments/eval/dpo-300q-dev500.jsonl",
+}
+
 
 def load_ids(rel_path: str) -> list[str] | None:
     path = REPO_ROOT / rel_path
@@ -146,7 +153,38 @@ def main() -> int:
     }
     print(f"  全部一致: {all_same}    评测题 ⊆ dev: {subset_dev}    评测题 ∩ train: {intersect_train} (应为 0)")
 
-    passed = ok_leak and ok_prov and all_same and subset_dev and intersect_train == 0 and not missing
+    # --- 5. dev-500 评测：组内一致、⊆ dev、⊇ dev-200 题集 ---
+    eval500: dict[str, set[str]] = {}
+    for name, rel in EVAL_FILES_500.items():
+        values = load_ids(rel)
+        if values is None:
+            report["eval_sets"][name] = {"status": "MISSING"}
+            print(f"  {name:<14} MISSING")
+            continue
+        eval500[name] = set(values)
+
+    ok_500 = True
+    if eval500:
+        print("\n=== 5. dev-500 评测校验 ===")
+        first = next(iter(eval500.values()))
+        same_500 = all(v == first for v in eval500.values())
+        subset_dev_500 = first <= dev if dev else False
+        overlap_500 = len(first & train)
+        covers_200 = evaluated <= first if evaluated else False
+        ok_500 = same_500 and subset_dev_500 and overlap_500 == 0 and covers_200
+        for name, v in eval500.items():
+            print(f"  {name:<14} {len(v):>4} 题")
+        print(f"  组内一致: {same_500}   ⊆ dev: {subset_dev_500}   ∩ train: {overlap_500} (应为 0)   "
+              f"⊇ dev-200 题集: {covers_200}")
+        report["eval_sets"]["dev500_summary"] = {
+            "all_same": same_500,
+            "subset_of_dev": subset_dev_500,
+            "overlap_with_train": overlap_500,
+            "covers_dev200": covers_200,
+        }
+
+    passed = (ok_leak and ok_prov and all_same and subset_dev and intersect_train == 0
+              and ok_500 and not missing)
     report["passed"] = passed
     print(f"\n=== 结论：{'PASS' if passed else 'FAIL'}"
           + (f"（缺失：{missing}）" if missing else "") + " ===")
