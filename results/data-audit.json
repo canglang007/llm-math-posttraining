@@ -32,6 +32,14 @@
       "duplicated_ids": 0,
       "avg_rows_per_id": 1.0
     },
+    "采样 300 题": {
+      "status": "OK",
+      "path": "experiments/sampling/gsm8k-train300-k4-t0.7.jsonl",
+      "rows": 300,
+      "unique_ids": 300,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
     "RFT 数据": {
       "status": "OK",
       "path": "data/processed/rft/gsm8k-train-rft.jsonl",
@@ -40,11 +48,27 @@
       "duplicated_ids": 111,
       "avg_rows_per_id": 3.61
     },
+    "RFT 300q": {
+      "status": "OK",
+      "path": "data/processed/rft/gsm8k-train-rft-300q.jsonl",
+      "rows": 286,
+      "unique_ids": 286,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
     "DPO 数据": {
       "status": "OK",
       "path": "data/processed/dpo/gsm8k-train-dpo.jsonl",
       "rows": 26,
       "unique_ids": 26,
+      "duplicated_ids": 0,
+      "avg_rows_per_id": 1.0
+    },
+    "DPO 300q": {
+      "status": "OK",
+      "path": "data/processed/dpo/gsm8k-train-dpo-300q.jsonl",
+      "rows": 79,
+      "unique_ids": 79,
       "duplicated_ids": 0,
       "avg_rows_per_id": 1.0
     },
@@ -60,14 +84,20 @@
   "leakage": {
     "train(清洗后)": 0,
     "采样 120 题": 0,
+    "采样 300 题": 0,
     "RFT 数据": 0,
+    "RFT 300q": 0,
     "DPO 数据": 0,
+    "DPO 300q": 0,
     "hard26": 0
   },
   "provenance": {
     "采样 120 题": 0,
+    "采样 300 题": 0,
     "RFT 数据": 0,
+    "RFT 300q": 0,
     "DPO 数据": 0,
+    "DPO 300q": 0,
     "hard26": 0
   },
   "eval_sets": {

@@ -48,11 +48,19 @@ RUNS: list[dict] = [
     },
     {
         "key": "rft",
-        "stage": "E2",
-        "label": "RFT (起点 SFT)",
+        "stage": "E2a",
+        "label": "RFT (起点 SFT, 114 题)",
         "path": "experiments/eval/rft-dev200.jsonl",
-        "train_data": "自采正确解 412 条",
-        "note": "train 120 题 × k=4 → 480 候选 → 过滤后 412 条",
+        "train_data": "自采正确解 412 条（114 题 × 平均 3.6 条）",
+        "note": "train 120 题 × k=4 → 480 候选 → 过滤后 412 条（实际只有 114 题）",
+    },
+    {
+        "key": "rft_300q",
+        "stage": "E2b",
+        "label": "RFT (起点 SFT, 286 题)",
+        "path": "experiments/eval/rft300q-dev200.jsonl",
+        "train_data": "自采正确解 286 条（286 题，每题 1 条）",
+        "note": "train 300 题 × k=4 → 每题只留 1 条正确解，条数=题数",
     },
     {
         "key": "dpo_from_rft",
@@ -65,10 +73,18 @@ RUNS: list[dict] = [
     {
         "key": "dpo_from_sft",
         "stage": "E3b",
-        "label": "DPO (起点 SFT, 平行)",
+        "label": "DPO (起点 SFT, 26 对)",
         "path": "experiments/eval/dpo-from-sft-dev200.jsonl",
         "train_data": "26 对偏好数据",
         "note": "lr 5e-5（修复后）、3 epochs",
+    },
+    {
+        "key": "dpo_300q",
+        "stage": "E3c",
+        "label": "DPO (起点 SFT, 79 对)",
+        "path": "experiments/eval/dpo300q-dev200.jsonl",
+        "train_data": "79 对偏好数据（扩样后）",
+        "note": "同 E3b 超参，唯一变化是配对数 26→79",
     },
     {
         "key": "grpo",

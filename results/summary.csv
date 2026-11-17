@@ -1,8 +1,10 @@
 stage,key,label,status,questions,correct,accuracy,extract_fail,avg_chars,train_data,path
 E0,base,Qwen3-4B-Base,OK,200,154,0.77,27,583.2,—,data/server-backup/baseline/gsm8k-dev-probe200-final.jsonl
 E1,sft,"SFT (Base+LoRA, 400 步)",OK,200,169,0.845,1,278.6,官方 CoT 6973 条,experiments/eval/sft-v3-ckpt400-dev200.jsonl
-E2,rft,RFT (起点 SFT),OK,200,163,0.815,0,269.1,自采正确解 412 条,experiments/eval/rft-dev200.jsonl
+E2a,rft,"RFT (起点 SFT, 114 题)",OK,200,163,0.815,0,269.1,自采正确解 412 条（114 题 × 平均 3.6 条）,experiments/eval/rft-dev200.jsonl
+E2b,rft_300q,"RFT (起点 SFT, 286 题)",OK,200,168,0.84,0,248.7,自采正确解 286 条（286 题，每题 1 条）,experiments/eval/rft300q-dev200.jsonl
 E3a,dpo_from_rft,"DPO (起点 RFT, 链式)",OK,200,169,0.845,0,277.2,26 对偏好数据,experiments/eval/dpo-dev200.jsonl
-E3b,dpo_from_sft,"DPO (起点 SFT, 平行)",OK,200,172,0.86,0,280.2,26 对偏好数据,experiments/eval/dpo-from-sft-dev200.jsonl
+E3b,dpo_from_sft,"DPO (起点 SFT, 26 对)",OK,200,172,0.86,0,280.2,26 对偏好数据,experiments/eval/dpo-from-sft-dev200.jsonl
+E3c,dpo_300q,"DPO (起点 SFT, 79 对)",OK,200,173,0.865,0,274.9,79 对偏好数据（扩样后）,experiments/eval/dpo300q-dev200.jsonl
 E4,grpo,"GRPO (起点 SFT, 全量 120 题)",OK,200,170,0.85,0,266.7,在线采样 + 答案规则奖励,experiments/eval/grpo-dev200.jsonl
 E4b,grpo_hard26,"GRPO (起点 SFT, 仅 26 道难题)",OK,200,167,0.835,0,268.5,难度筛选 26 题 + 在线采样,experiments/eval/grpo-hard26-dev200.jsonl

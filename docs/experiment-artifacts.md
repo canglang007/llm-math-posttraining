@@ -8,7 +8,7 @@
 
 ---
 
-## 一、模型 adapter（6 个，全部在服务器持久卷）
+## 一、模型 adapter（8 个，全部在服务器持久卷）
 
 | 阶段 | 路径（服务器 `/data/llm-math-posttraining/`） | 起点 | 训练配置 |
 |---|---|---|---|
@@ -18,8 +18,10 @@
 | E3b DPO(平行) | `experiments/dpo/qwen3-4b-gsm8k-dpo-from-sft` | E1 | `configs/dpo_qwen3_4b_12gb.yaml`（现版，起点 SFT） |
 | E4 GRPO | `experiments/grpo/qwen3-4b-gsm8k-grpo` | E1 | `configs/grpo_qwen3_4b_16gb.yaml` |
 | E4b GRPO-hard26 | `experiments/grpo/qwen3-4b-gsm8k-grpo-hard26` | E1 | `configs/grpo_hard26_16gb.yaml` |
+| E2b RFT-300q | `experiments/rft/qwen3-4b-gsm8k-rft-300q` | E1 | `configs/rft_qwen3_4b_12gb_300q.yaml` |
+| E3c DPO-300q | `experiments/dpo/qwen3-4b-gsm8k-dpo-300q` | E1 | `configs/dpo_qwen3_4b_12gb_300q.yaml` |
 
-- 磁盘释放前已逐个校验 `adapter_model.safetensors` 存在（6/6 OK）。
+- 首次释放前已逐个校验 `adapter_model.safetensors`（6/6 OK）；E2b/E3c 为 2026-11-17 扩样新增，产物齐全。
 - 本地**不保存**权重（`.gitignore` 已忽略 `*.safetensors`），靠上述路径 + 配置复现。
 - 唯一的例外：`data/server-backup/sft/`（411M）是早期 pilot 阶段的旧 adapter，**不是**主线的 sft-v3，仅作历史备份。
 
@@ -34,6 +36,10 @@
 | **RFT 训练集** | `data/processed/rft/gsm8k-train-rft.jsonl` | ✅ 350K | 412 条正确解 |
 | **DPO 训练集** | `data/processed/dpo/gsm8k-train-dpo.jsonl` | ✅ 31K | 26 对偏好数据 |
 | 难题子集（hard26） | `data/processed/sft/gsm8k-train-hard26.raw.jsonl` | ✅ 7.8K | 0<正确数<4 的 26 题 |
+| 采样候选（300 题 × k=4） | `experiments/sampling/gsm8k-train300-k4-t0.7.jsonl` | ✅ 310K | 1200 条候选（含复用前 120 题） |
+| 展开后的候选（300 题） | `data/processed/rft/gsm8k-train300-candidates.jsonl` | ✅ 712K | 1144 条，带 is_correct |
+| **RFT 训练集（扩样）** | `data/processed/rft/gsm8k-train-rft-300q.jsonl` | ✅ 240K | **286 条 = 286 题**（每题 1 条） |
+| **DPO 训练集（扩样）** | `data/processed/dpo/gsm8k-train-dpo-300q.jsonl` | ✅ 97K | **79 对**偏好数据 |
 
 > `data/processed/rft/sample.jsonl`、`data/processed/dpo/sample.jsonl` 是格式样例，**不是**训练数据。
 
@@ -48,8 +54,10 @@
 | E3b DPO(平行) | `experiments/eval/dpo-from-sft-dev200.jsonl` | ✅ |
 | E4 GRPO | `experiments/eval/grpo-dev200.jsonl` | ✅ |
 | E4b GRPO-hard26 | `experiments/eval/grpo-hard26-dev200.jsonl` | ✅ |
+| E2b RFT-300q | `experiments/eval/rft300q-dev200.jsonl` | ✅ |
+| E3c DPO-300q | `experiments/eval/dpo300q-dev200.jsonl` | ✅ |
 
-**七档全部有本地逐题文件**，`summarize_results.py` 可完整重算，无 MISSING。
+**九档全部有本地逐题文件**，`summarize_results.py` 可完整重算，无 MISSING。
 
 汇总产物（已入库）：
 - `results/summary.json` — 机器可读，含全部指标与配对检验
@@ -65,7 +73,7 @@ python scripts/summarize_results.py --output-dir results
 
 ## 四、训练日志（本地备份）
 
-主线 19 份日志已备份到 `data/server-backup/logs/main-run/`：
+主线 24 份日志已备份到 `data/server-backup/logs/main-run/`：
 
 | 阶段 | 日志 |
 |---|---|
@@ -75,8 +83,10 @@ python scripts/summarize_results.py --output-dir results
 | DPO | `dpo-train.log`（从 RFT）、`dpo-from-sft.log`（从 SFT）、`dpo-eval.log`、`dpo-from-sft-eval.log` |
 | GRPO | `grpo-train.log`（30 步）、`grpo-hard26.log`（16 步）、`grpo-smoke.log`、各评测日志 |
 | 收官评测 | `final-evals.log`（RFT+DPO 串行那次） |
+| 扩样（2026-11-17） | `rft300-sampling.log`（300 题采样）、`rft300-train.log`（36 步）、`rft300-eval.log`、`dpo300-train.log`（30 步）、`dpo300-eval.log` |
 
 （服务器 `/data/*.log` 上还留着早期 pilot/测速日志，未逐份备份，结论已进 issue-log。）
+扩样实验的 5 份日志也已一并备份（`rft300-*`、`dpo300-*`）。
 
 ## 五、数据纪律审计（2026-11-17 16:45，PASS）
 

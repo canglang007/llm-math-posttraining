@@ -36,11 +36,11 @@
     },
     {
       "key": "rft",
-      "stage": "E2",
-      "label": "RFT (起点 SFT)",
+      "stage": "E2a",
+      "label": "RFT (起点 SFT, 114 题)",
       "path": "experiments/eval/rft-dev200.jsonl",
-      "train_data": "自采正确解 412 条",
-      "note": "train 120 题 × k=4 → 480 候选 → 过滤后 412 条",
+      "train_data": "自采正确解 412 条（114 题 × 平均 3.6 条）",
+      "note": "train 120 题 × k=4 → 480 候选 → 过滤后 412 条（实际只有 114 题）",
       "status": "OK",
       "questions": 200,
       "correct": 163,
@@ -48,6 +48,21 @@
       "extract_fail": 0,
       "extract_fail_rate": 0.0,
       "avg_chars": 269.1
+    },
+    {
+      "key": "rft_300q",
+      "stage": "E2b",
+      "label": "RFT (起点 SFT, 286 题)",
+      "path": "experiments/eval/rft300q-dev200.jsonl",
+      "train_data": "自采正确解 286 条（286 题，每题 1 条）",
+      "note": "train 300 题 × k=4 → 每题只留 1 条正确解，条数=题数",
+      "status": "OK",
+      "questions": 200,
+      "correct": 168,
+      "accuracy": 0.84,
+      "extract_fail": 0,
+      "extract_fail_rate": 0.0,
+      "avg_chars": 248.7
     },
     {
       "key": "dpo_from_rft",
@@ -67,7 +82,7 @@
     {
       "key": "dpo_from_sft",
       "stage": "E3b",
-      "label": "DPO (起点 SFT, 平行)",
+      "label": "DPO (起点 SFT, 26 对)",
       "path": "experiments/eval/dpo-from-sft-dev200.jsonl",
       "train_data": "26 对偏好数据",
       "note": "lr 5e-5（修复后）、3 epochs",
@@ -78,6 +93,21 @@
       "extract_fail": 0,
       "extract_fail_rate": 0.0,
       "avg_chars": 280.2
+    },
+    {
+      "key": "dpo_300q",
+      "stage": "E3c",
+      "label": "DPO (起点 SFT, 79 对)",
+      "path": "experiments/eval/dpo300q-dev200.jsonl",
+      "train_data": "79 对偏好数据（扩样后）",
+      "note": "同 E3b 超参，唯一变化是配对数 26→79",
+      "status": "OK",
+      "questions": 200,
+      "correct": 173,
+      "accuracy": 0.865,
+      "extract_fail": 0,
+      "extract_fail_rate": 0.0,
+      "avg_chars": 274.9
     },
     {
       "key": "grpo",
@@ -134,6 +164,17 @@
       "mcnemar_p": 0.2863
     },
     {
+      "run": "rft_300q",
+      "reference": "sft",
+      "shared_questions": 200,
+      "both_correct": 159,
+      "only_run": 9,
+      "only_reference": 10,
+      "both_wrong": 22,
+      "delta_pt": -0.5,
+      "mcnemar_p": 1.0
+    },
+    {
       "run": "dpo_from_rft",
       "reference": "sft",
       "shared_questions": 200,
@@ -154,6 +195,17 @@
       "both_wrong": 23,
       "delta_pt": 1.5,
       "mcnemar_p": 0.5811
+    },
+    {
+      "run": "dpo_300q",
+      "reference": "sft",
+      "shared_questions": 200,
+      "both_correct": 164,
+      "only_run": 9,
+      "only_reference": 5,
+      "both_wrong": 22,
+      "delta_pt": 2.0,
+      "mcnemar_p": 0.424
     },
     {
       "run": "grpo",

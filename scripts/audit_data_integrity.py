@@ -27,13 +27,16 @@ DATA_FILES: dict[str, str] = {
     "dev(清洗后)": "data/processed/sft/gsm8k-dev.raw.jsonl",
     "train(原始)": "data/processed/sft/gsm8k-train.raw.jsonl",
     "采样 120 题": "experiments/sampling/gsm8k-train120-k4-t0.7.jsonl",
+    "采样 300 题": "experiments/sampling/gsm8k-train300-k4-t0.7.jsonl",
     "RFT 数据": "data/processed/rft/gsm8k-train-rft.jsonl",
+    "RFT 300q": "data/processed/rft/gsm8k-train-rft-300q.jsonl",
     "DPO 数据": "data/processed/dpo/gsm8k-train-dpo.jsonl",
+    "DPO 300q": "data/processed/dpo/gsm8k-train-dpo-300q.jsonl",
     "hard26": "data/processed/sft/gsm8k-train-hard26.raw.jsonl",
 }
 
 # 训练用文件（必须全部来自 train）
-TRAINING_FILES = ["采样 120 题", "RFT 数据", "DPO 数据", "hard26"]
+TRAINING_FILES = ["采样 120 题", "采样 300 题", "RFT 数据", "RFT 300q", "DPO 数据", "DPO 300q", "hard26"]
 
 # 评测结果（必须评同一批题、⊆ dev）
 EVAL_FILES: dict[str, str] = {
@@ -44,6 +47,8 @@ EVAL_FILES: dict[str, str] = {
     "dpo_sft": "experiments/eval/dpo-from-sft-dev200.jsonl",
     "grpo": "experiments/eval/grpo-dev200.jsonl",
     "grpo_hard26": "experiments/eval/grpo-hard26-dev200.jsonl",
+    "rft_300q": "experiments/eval/rft300q-dev200.jsonl",
+    "dpo_300q": "experiments/eval/dpo300q-dev200.jsonl",
 }
 
 
