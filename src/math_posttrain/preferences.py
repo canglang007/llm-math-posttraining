@@ -16,25 +16,57 @@ def _verified(candidate: dict, dataset: str) -> tuple[bool, str]:
     return correct, solution
 
 
-def build_rft_records(candidates: Iterable[dict], dataset: str) -> list[dict]:
-    records = []
+def _rft_record(candidate: dict, solution: str, dataset: str) -> dict:
+    messages = build_chat_messages(str(candidate["question"]), dataset)
+    messages.append({"role": "assistant", "content": solution})
+    return {
+        "id": str(candidate.get("id", "")),
+        "source": candidate.get("source", dataset),
+        "split": candidate.get("split", "train"),
+        "category": candidate.get("category"),
+        "level": candidate.get("level"),
+        "answer": candidate.get("reference"),
+        "messages": messages,
+    }
+
+
+def build_rft_records(
+    candidates: Iterable[dict],
+    dataset: str,
+    max_per_question: int | None = None,
+) -> list[dict]:
+    """构造 RFT 记录（只保留答案验证正确的解）。
+
+    max_per_question=None：保留全部正确解（默认，兼容旧行为）。
+    给定 N：每题最多取 N 条正确解，按「先短后长、再按文本」排序取前 N，确定性可复现。
+
+    为什么需要这个参数：同一道题的 k 条候选可能全部正确，全留下会让「条数」远大于
+    「题数」（实测 120 题 × k=4 产出 412 条、实际只有 114 题），
+    训练时同题被反复喂 3~4 遍。要按题去重就用 max_per_question=1。
+    """
+    if max_per_question is None:
+        records = []
+        for candidate in candidates:
+            correct, solution = _verified(candidate, dataset)
+            if correct:
+                records.append(_rft_record(candidate, solution, dataset))
+        return records
+
+    if max_per_question < 1:
+        raise ValueError("max_per_question must be >= 1")
+
+    grouped: dict[str, list[tuple[dict, str]]] = defaultdict(list)
     for candidate in candidates:
         correct, solution = _verified(candidate, dataset)
         if not correct:
             continue
-        messages = build_chat_messages(str(candidate["question"]), dataset)
-        messages.append({"role": "assistant", "content": solution})
-        records.append(
-            {
-                "id": str(candidate.get("id", "")),
-                "source": candidate.get("source", dataset),
-                "split": candidate.get("split", "train"),
-                "category": candidate.get("category"),
-                "level": candidate.get("level"),
-                "answer": candidate.get("reference"),
-                "messages": messages,
-            }
-        )
+        grouped[str(candidate.get("id", ""))].append((candidate, solution))
+
+    records = []
+    for items in grouped.values():
+        chosen = sorted(items, key=lambda item: (len(item[1]), item[1]))[:max_per_question]
+        for candidate, solution in chosen:
+            records.append(_rft_record(candidate, solution, dataset))
     return records
 
 

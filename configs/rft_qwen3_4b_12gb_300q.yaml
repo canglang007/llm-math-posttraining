@@ -1,0 +1,50 @@
+# E2b RFT（扩样版）：与 E2 唯一的差别是「训练数据的题数」。
+#
+# 背景：E2 用的 412 条训练记录，审计后发现只有 114 道不同的题（平均 3.6 条/题）——
+#       同题多解让「条数」虚高，有效样本仅相当于 SFT 训练集的 1.6%。
+#       本实验把采样从 120 题扩到 300 题，并且每题只保留 1 条正确解（条数 = 题数），
+#       用于检验「RFT 的瓶颈是数据量而不是方法」这个假设。
+#
+# 归因设计（保持其余变量不变，才能把差异归给数据量）：
+#   - 起点同为 experiments/sft/qwen3-4b-gsm8k-sft-v3/checkpoint-400
+#   - 同样 2 epochs / accum 16 / lr 1e-4 / seed 42 / LoRA r=8
+#   - 唯一变化：train_file 的题数（114 → 约 260）与「每题 1 条解」
+task: sft
+model:
+  path: /data/models/Qwen3-4B-Base
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-sft-v3/checkpoint-400
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/rft/qwen3-4b-gsm8k-rft-300q
+  train_file: data/processed/rft/gsm8k-train-rft-300q.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 5
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42
