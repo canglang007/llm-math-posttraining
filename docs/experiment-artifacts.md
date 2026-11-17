@@ -28,13 +28,13 @@
 |---|---|---|---|
 | GSM8K 训练（清洗后） | `data/processed/sft/gsm8k-train.jsonl` | ✅ 6.2M | 6973 条，SFT 用 |
 | GSM8K dev（清洗后） | `data/processed/sft/gsm8k-dev.raw.jsonl` | ✅ 308K | 500 条，只用于最终评测 |
-| 采样候选（120 题 × k=4） | `experiments/sampling/gsm8k-train120-k4-t0.7.jsonl` | ❌ | 480 条候选，RFT/GRPO 数据的源头 |
-| 展开后的候选 | `data/processed/rft/gsm8k-train120-candidates.jsonl` | ❌ | 带 is_correct 标记 |
-| **RFT 训练集** | `data/processed/rft/gsm8k-train-rft.jsonl` | ❌（本地只有 `sample.jsonl` 占位） | 412 条正确解 |
-| **DPO 训练集** | `data/processed/dpo/gsm8k-train-dpo.jsonl` | ❌（本地只有 `sample.jsonl` 占位） | 26 对偏好数据 |
-| 难题子集（hard26） | `data/processed/sft/gsm8k-train-hard26.raw.jsonl` | ❌ | 0<正确数<4 的 26 题 |
+| 采样候选（120 题 × k=4） | `experiments/sampling/gsm8k-train120-k4-t0.7.jsonl` | ✅ 166K | 480 条候选，RFT/GRPO 数据的源头 |
+| 展开后的候选 | `data/processed/rft/gsm8k-train120-candidates.jsonl` | ✅ 270K | 带 is_correct 标记 |
+| **RFT 训练集** | `data/processed/rft/gsm8k-train-rft.jsonl` | ✅ 350K | 412 条正确解 |
+| **DPO 训练集** | `data/processed/dpo/gsm8k-train-dpo.jsonl` | ✅ 31K | 26 对偏好数据 |
+| 难题子集（hard26） | `data/processed/sft/gsm8k-train-hard26.raw.jsonl` | ✅ 7.8K | 0<正确数<4 的 26 题 |
 
-> 注意：`data/processed/rft/sample.jsonl`、`data/processed/dpo/sample.jsonl` 是格式样例，**不是**训练数据。
+> `data/processed/rft/sample.jsonl`、`data/processed/dpo/sample.jsonl` 是格式样例，**不是**训练数据。
 
 ## 三、评测结果（dev-200，greedy，batch=1，同一批题）
 
@@ -43,12 +43,14 @@
 | E0 Base | `data/server-backup/baseline/gsm8k-dev-probe200-final.jsonl` | ✅ |
 | E1 SFT | `experiments/eval/sft-v3-ckpt400-dev200.jsonl` | ✅ |
 | E2 RFT | `experiments/eval/rft-dev200.jsonl` | ✅ |
-| E3a DPO(链式) | — | ❌ **本地缺**（服务器上有 `experiments/eval/dpo-dev200.jsonl`） |
+| E3a DPO(链式) | `experiments/eval/dpo-dev200.jsonl` | ✅（2026-11-17 16:36 补齐） |
 | E3b DPO(平行) | `experiments/eval/dpo-from-sft-dev200.jsonl` | ✅ |
 | E4 GRPO | `experiments/eval/grpo-dev200.jsonl` | ✅ |
 | E4b GRPO-hard26 | `experiments/eval/grpo-hard26-dev200.jsonl` | ✅ |
 
-汇总产物（本次整理新增，已入库）：
+**七档全部有本地逐题文件**，`summarize_results.py` 可完整重算，无 MISSING。
+
+汇总产物（已入库）：
 - `results/summary.json` — 机器可读，含全部指标与配对检验
 - `results/summary.csv` — 贴表格用
 - `results/pairwise.csv` — 逐 run 的 McNemar 配对四格
@@ -59,13 +61,28 @@
 python scripts/summarize_results.py --output-dir results
 ```
 
-## 四、已知缺口（下次开机待补）
+## 四、训练日志（本地备份）
 
-1. **E3a DPO(链式) 的逐题结果没拉回本地**。分数 0.845（169/200）来自评测日志，本地无 jsonl，`summarize_results.py` 会把它标成 `MISSING`。
-   补法：开机后 `scp /data/llm-math-posttraining/experiments/eval/dpo-dev200.jsonl experiments/eval/`。
-2. **RFT / DPO / hard26 训练数据只在服务器**。若要离线复现或做数据分析，需按第二节拉回（合计约几 MB）。
-3. **训练日志只在服务器 `/data/*.log`**（`train-v3.log`、`rft-train.log`、`dpo-train.log`、`dpo-from-sft.log`、`grpo-train.log`、`grpo-hard26.log`、各评测日志）。关键数字已摘进 `docs/issue-log.md` 与 `docs/main-results.md`，原始日志未备份到本地。
-4. **dev 只评了 200 题**（实际有 500 题）。若要把分辨率从 ±2.8pt 提到 ±1.8pt，需扩到 500 题重跑 6 个模型。
+主线 19 份日志已备份到 `data/server-backup/logs/main-run/`：
+
+| 阶段 | 日志 |
+|---|---|
+| SFT | `train-v3.log`（400 步）、`eval-v3-200.log` |
+| 采样 | `rft120.log`（120 题 k=4）、`rft-sampling.log`、`smoke-sampling.log`、`speedtest*.log` |
+| RFT | `rft-train.log`（52 步） |
+| DPO | `dpo-train.log`（从 RFT）、`dpo-from-sft.log`（从 SFT）、`dpo-eval.log`、`dpo-from-sft-eval.log` |
+| GRPO | `grpo-train.log`（30 步）、`grpo-hard26.log`（16 步）、`grpo-smoke.log`、各评测日志 |
+| 收官评测 | `final-evals.log`（RFT+DPO 串行那次） |
+
+（服务器 `/data/*.log` 上还留着早期 pilot/测速日志，未逐份备份，结论已进 issue-log。）
+
+## 五、已知缺口
+
+1. ~~E3a 逐题结果~~ — **已补齐**（2026-11-17 16:36），重算得 169/200，与文档一致；配对 11 对 / 11 错、p=1.000，净差 0。
+2. ~~RFT/DPO 训练数据只在服务器~~ — **已补齐**到本地 `data/processed/{rft,dpo}/`。
+3. ~~训练日志未备份~~ — 主线 19 份已备份（见第四节）。
+4. **dev 只评了 200 题**（实际有 500 题）。若要把分辨率从 ±2.8pt 提到 ±1.8pt，需扩到 500 题重跑 7 个模型。
+5. **模型权重不在本地**（只在国内服务器持久卷），靠配置 + 数据可复现。
 
 ## 五、复现一条完整的实验链（命令骨架）
 

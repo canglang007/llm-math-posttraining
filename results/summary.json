@@ -56,12 +56,13 @@
       "path": "experiments/eval/dpo-dev200.jsonl",
       "train_data": "26 对偏好数据",
       "note": "旧链路；本地无结果文件时会标 MISSING（分数见 docs/main-results.md）",
-      "status": "MISSING",
-      "questions": null,
-      "correct": null,
-      "accuracy": null,
-      "extract_fail": null,
-      "avg_chars": null
+      "status": "OK",
+      "questions": 200,
+      "correct": 169,
+      "accuracy": 0.845,
+      "extract_fail": 0,
+      "extract_fail_rate": 0.0,
+      "avg_chars": 277.2
     },
     {
       "key": "dpo_from_sft",
@@ -131,6 +132,17 @@
       "both_wrong": 23,
       "delta_pt": -3.0,
       "mcnemar_p": 0.2863
+    },
+    {
+      "run": "dpo_from_rft",
+      "reference": "sft",
+      "shared_questions": 200,
+      "both_correct": 158,
+      "only_run": 11,
+      "only_reference": 11,
+      "both_wrong": 20,
+      "delta_pt": 0.0,
+      "mcnemar_p": 1.0
     },
     {
       "run": "dpo_from_sft",
