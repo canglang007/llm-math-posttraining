@@ -1,0 +1,48 @@
+# E3c DPO（扩样版）：与 E3b 唯一的差别是偏好数据量 26 对 → 79 对。
+#
+# 背景：扩采样到 300 题后，同题「有对有错」的题从 26 道增到 79 道，
+#       偏好数据量提升 3 倍。用来检验「DPO 的 +1.5pt 在更多偏好数据下会不会放大」。
+#
+# 归因设计：起点、beta、lr、accum、epochs、seed 全部与 configs/dpo_qwen3_4b_12gb.yaml 相同，
+#           唯一变化是 preference_file 的配对数。
+task: dpo
+model:
+  path: /data/models/Qwen3-4B-Base
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-sft-v3/checkpoint-400
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  max_prompt_len: 512
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/dpo/qwen3-4b-gsm8k-dpo-300q
+  preference_file: data/processed/dpo/gsm8k-train-dpo-300q.jsonl
+  beta: 0.1
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-5
+  num_train_epochs: 3
+  warmup_ratio: 0.1
+  lr_scheduler_type: cosine
+  logging_steps: 2
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42
