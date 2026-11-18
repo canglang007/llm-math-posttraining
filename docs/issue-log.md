@@ -261,3 +261,14 @@
 - A2 训练：273 秒 / 36 步，train_loss 0.1107（与 E2b 的 0.111 几乎相同——训练时模型不知道解是错的）。
 - A2 评测：0.825 (165/200)，抽取失败 0，平均 243 字符。首启因数据文件用错（chat 格式 vs raw 字段）崩溃一次，换 dev.raw.jsonl 后正常。
 - 结果：E2b 0.840 vs A2 0.825（−1.5pt，p=0.607 不显著）；A2 比 SFT 低 2.0pt（p=0.523）。「不验证的自采样直接训，比不训还伤」，验证信号方向正确、幅度需 test 终评（1319 题）判定。
+
+## 2026-11-18 22:50 vLLM 推理后端落地（本地完成，待服务器口径校准）（Asia/Shanghai UTC+8）
+
+- 背景：历史全部评测走 transformers `generate`（4bit NF4 + LoRA，batch=1），4060 Ti 上约 13.5 秒/题，test 1319 题 ×3 模型串行需 15 小时；用户要求把 vLLM 作为长期推理引擎（不只 test 一次性用）。
+- 已完成（纯本地）：
+  - `scripts/evaluate_model.py` 新增 `--backend {hf,vllm}`（默认 hf，历史行为一字不改）；prompt 渲染、停止词、`truncate_generation` 两条后端共用，保证口径可比。
+  - vLLM 侧：greedy（temperature=0）、同一组 stop 字符串 + stop_token_ids、`include_stop_str_in_output=False`、LoRA 经 `enable_lora`+`LoRARequest`；`--vllm-quantization bitsandbytes|none` 默认 bitsandbytes（与 HF 的 4bit 对齐），`--vllm-chunk` 控制单次提交请求数。
+  - 新增 `scripts/compare_inference_backends.py`：逐题比对两份预测的判分一致率、答案一致率、翻转明细。
+  - 单测 +12（口径守卫：greedy 语义、停止条件、prompt 渲染、adapter rank、缺 vllm 的报错、比对逻辑），81 passed。
+- **待做（需服务器）**：用 vLLM 重跑已有 HF 分数的 dev-200，测一致率（预计 >98%）并记录；一致率异常（<95%）则停查，不硬切。校准通过后 test 终评统一走 vLLM 并在文档注明口径。
+- 已知差异（必须如实记录，不能隐瞒）：vLLM 内核与 HF 不同；即使 quantization=bitsandbytes 也无法保证逐 bit 一致，greedy 在极低概率差 token 上可能翻转。
