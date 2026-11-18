@@ -66,3 +66,22 @@ def test_rft_max_per_question_picks_shortest_first() -> None:
 def test_rft_max_per_question_zero_is_rejected() -> None:
     with pytest.raises(ValueError):
         build_rft_records(multi_solution_candidates(), "gsm8k", max_per_question=0)
+
+
+def test_rft_ignore_correctness_keeps_wrong_solutions() -> None:
+    """A2 消融：不验证时错误解也会进训练集（模拟「不用验证器」）。"""
+    records = build_rft_records(multi_solution_candidates(), "gsm8k", ignore_correctness=True)
+    contents = [record["messages"][-1]["content"] for record in records]
+    assert "#### 3" in contents  # q1 的错误解
+    # q1 的 4 条候选 + q2 的 1 条，全部保留（不验证时不过滤）
+    assert len(records) == 5
+
+
+def test_rft_ignore_correctness_with_max_per_question_matches_verified_size() -> None:
+    """同量对照：都按题取 1 条时，验证组与不验证组的题数一致，便于干净归因。"""
+    verified = build_rft_records(multi_solution_candidates(), "gsm8k", max_per_question=1)
+    unverified = build_rft_records(
+        multi_solution_candidates(), "gsm8k", max_per_question=1, ignore_correctness=True
+    )
+    assert len(verified) == len(unverified) == 2
+    assert {r["id"] for r in verified} == {r["id"] for r in unverified}

@@ -1,0 +1,60 @@
+# A2 消融（不验证对照组）：同一批候选，但**不过答案验证器筛**。
+#
+# 实验目的：项目的核心主张是「数据引擎的价值来自答案验证信号」。
+# 已有的 E2b（SFT→RFT）用的是「只留正确解」的 286 条；本实验用**同一批候选、
+# 同一数量（每题 1 条）、同一起点、同一超参**，唯一差别是那 286 条里有
+# 37 条（12.9%）是错误解——即「采样完直接用，不做验证」的朴素做法。
+#
+# 归因设计（只有一个变量）：
+#   处理组 E2b: gsm8k-train-rft-300q.jsonl     286 条，全部答案正确
+#   对照组 A2 : gsm8k-train-rft-a2nf-300q.jsonl 286 条，37 条答案错误（12.9%）
+# 两组的差 = 「答案验证器」的单独贡献。
+#
+# 数据构造命令（服务器执行）：
+#   python scripts/build_preference_data.py \
+#     --candidates data/processed/rft/gsm8k-train300-candidates.jsonl \
+#     --dataset gsm8k --max-per-question 1 --ignore-correctness \
+#     --rft-output data/processed/rft/gsm8k-train-rft-a2nf-300q.jsonl \
+#     --dpo-output /tmp/dpo-a2nf-unused.jsonl
+#
+# 预测：分数下降 1~3pt（因为 12.9% 的训练目标本身是错的），
+#       且下降幅度应接近「错误率 × 该错误模式的可学性」。
+task: sft
+model:
+  path: /data/models/Qwen3-4B-Base
+  base_adapter: experiments/sft/qwen3-4b-gsm8k-sft-v3/checkpoint-400
+  load_in_4bit: true
+  compute_dtype: bfloat16
+  max_seq_len: 1024
+  force_chat_template: true
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  output_dir: experiments/rft/qwen3-4b-gsm8k-rft-a2nf-300q
+  train_file: data/processed/rft/gsm8k-train-rft-a2nf-300q.jsonl
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  logging_steps: 5
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  bf16: true
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  seed: 42

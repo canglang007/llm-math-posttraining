@@ -34,8 +34,9 @@ def build_rft_records(
     candidates: Iterable[dict],
     dataset: str,
     max_per_question: int | None = None,
+    ignore_correctness: bool = False,
 ) -> list[dict]:
-    """构造 RFT 记录（只保留答案验证正确的解）。
+    """构造 RFT 记录（默认只保留答案验证正确的解）。
 
     max_per_question=None：保留全部正确解（默认，兼容旧行为）。
     给定 N：每题最多取 N 条正确解，按「先短后长、再按文本」排序取前 N，确定性可复现。
@@ -43,7 +44,32 @@ def build_rft_records(
     为什么需要这个参数：同一道题的 k 条候选可能全部正确，全留下会让「条数」远大于
     「题数」（实测 120 题 × k=4 产出 412 条、实际只有 114 题），
     训练时同题被反复喂 3~4 遍。要按题去重就用 max_per_question=1。
+
+    ignore_correctness=True：**不判答案对错**，所有非空解都可作训练目标。
+    这是 A2 消融的「不验证」对照组——配合 max_per_question=1 可做到
+    「与处理组同量、同起点，唯一差别是有没有用答案验证器筛过」。
+    不配合 max_per_question 时等于「采样完直接用」，数据量会是处理组的数倍，
+    此时「验证」与「数据量」两个变量被混在一起，解读时必须说明。
     """
+    if ignore_correctness:
+        if max_per_question is not None and max_per_question < 1:
+            raise ValueError("max_per_question must be >= 1")
+        grouped: dict[str, list[tuple[dict, str]]] = defaultdict(list)
+        for candidate in candidates:
+            solution = str(candidate.get("solution", "")).strip()
+            if not solution:
+                continue
+            grouped[str(candidate.get("id", ""))].append((candidate, solution))
+
+        records = []
+        for items in grouped.values():
+            chosen = items if max_per_question is None else sorted(
+                items, key=lambda item: (len(item[1]), item[1])
+            )[:max_per_question]
+            for candidate, solution in chosen:
+                records.append(_rft_record(candidate, solution, dataset))
+        return records
+
     if max_per_question is None:
         records = []
         for candidate in candidates:

@@ -29,10 +29,27 @@ def main() -> None:
         default=None,
         help="每题最多保留多少条正确解；1 表示按题去重（避免条数虚高于题数）。默认保留全部。",
     )
+    parser.add_argument(
+        "--ignore-correctness",
+        action="store_true",
+        help="A2 消融用：不判答案对错，所有候选都可作 RFT 训练目标（模拟「不用验证器」）。",
+    )
     args = parser.parse_args()
 
+    if args.ignore_correctness and args.max_per_question is None:
+        print(
+            "[warn] --ignore-correctness 未配 --max-per-question：数据量会是处理组的数倍，"
+            "「验证」与「数据量」两个变量会混在一起",
+            file=sys.stderr,
+        )
+
     candidates = read_jsonl(args.candidates)
-    rft = build_rft_records(candidates, args.dataset, max_per_question=args.max_per_question)
+    rft = build_rft_records(
+        candidates,
+        args.dataset,
+        max_per_question=args.max_per_question,
+        ignore_correctness=args.ignore_correctness,
+    )
     dpo = build_dpo_records(candidates, args.dataset)
     write_jsonl(args.rft_output, rft)
     write_jsonl(args.dpo_output, dpo)
@@ -46,6 +63,7 @@ def main() -> None:
                 "rft_questions": len({str(r.get("id", "")) for r in rft}),
                 "dpo_pairs": len(dpo),
                 "max_per_question": args.max_per_question,
+                "verified": not args.ignore_correctness,
                 "rft_output": str(args.rft_output),
                 "dpo_output": str(args.dpo_output),
             },
