@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>数学推理服务 · 实时多模型对比</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#f7f7f5; --panel:#fff; --ink:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e0;
+    --ok:#1f7a4d; --ok-bg:#eaf5ee; --bad:#b03030; --bad-bg:#fbebeb; --accent:#2d5f8b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;line-height:1.6}
+  header{padding:26px 36px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:20px}
+  .sub{color:var(--muted);font-size:12.5px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 36px;border-bottom:1px solid var(--line);background:#fcfcfa}
+  input[type=text],textarea{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff;color:var(--ink)}
+  input[type=text]{width:280px}
+  textarea{width:100%;min-height:76px;resize:vertical;line-height:1.55}
+  button{font-family:inherit;font-size:13px;font-weight:600;border:1px solid var(--accent);background:var(--accent);color:#fff;
+         border-radius:8px;padding:8px 16px;cursor:pointer}
+  button:disabled{opacity:.55;cursor:default}
+  button.ghost{background:#fff;color:var(--accent)}
+  .main{padding:18px 36px 60px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{font-size:12.5px;padding:5px 12px;border:1px solid var(--line);border-radius:20px;cursor:pointer;background:#fff;user-select:none}
+  .chip.on{background:#eef4f9;border-color:var(--accent);color:var(--accent);font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:6px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;min-height:180px}
+  .card h3{margin:0 0 6px;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .meta{font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .badge{font-size:10.5px;padding:1px 7px;border-radius:6px;font-weight:600}
+  .badge.ok{color:var(--ok);background:var(--ok-bg)}
+  .badge.bad{color:var(--bad);background:var(--bad-bg)}
+  .badge.pend{color:var(--muted);background:#f2f2ef}
+  pre{margin:8px 0 0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Menlo,monospace;
+      font-size:11.5px;line-height:1.55;background:#fafaf8;border:1px solid #efefea;border-radius:8px;padding:9px 10px;
+      max-height:280px;overflow:auto;color:#2b2b2b}
+  .err{color:var(--bad);font-size:12px;margin-top:8px}
+  .note{font-size:12px;color:var(--muted);margin-top:12px}
+  .hintbox{background:#fdf8e8;border:1px solid #f0e3b8;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#6a5a1e;margin-bottom:14px;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>数学推理服务 · 实时多模型对比</h1>
+  <div class="sub">同一个 Qwen3-4B 底座 + 不同后训练 adapter，经 vLLM OpenAI 兼容接口并发调用（greedy、与评测同一套 prompt）</div>
+</header>
+
+<div class="bar">
+  <span class="meta">服务地址</span>
+  <input id="endpoint" type="text" value="http://localhost:8000" spellcheck="false">
+  <button class="ghost" id="pingBtn">测试连接</button>
+  <span id="pingState" class="meta">未连接</span>
+</div>
+
+<div class="main">
+  <div class="hintbox" id="hintbox">
+    还没有连上服务：先在服务器上运行 <code>bash deploy/serve.sh</code>（约 1~2 分钟启动），
+    再把上面的地址改成该服务器的 <code>http://IP:8000</code>。面试当天不必现场验证也可以——这段留作演示。
+  </div>
+
+  <div class="field">
+    <label>题目</label>
+    <textarea id="question">Anne purchased a box of sweets that contains 15 packs, and each pack has 60 pieces. She kept two packs and gave the rest to her 10 friends equally. How many pieces of sweets did each of her friends receive?</textarea>
+  </div>
+
+  <div class="field">
+    <label>参考答案（可留空；填了会判对错）</label>
+    <input id="reference" type="text" value="78" style="width:160px">
+  </div>
+
+  <div class="field">
+    <label>模型（点击切换）</label>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <button id="askBtn">并发提问</button>
+  <div class="note">解码口径：temperature=0、max_tokens=512、stop=["&lt;|im_start|&gt;", "assistant\\n", "\\n\\nQuestion:"]——与评测脚本完全一致，所以这里的答案可与文档中的分数对照。</div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+const SYSTEM = "You are a careful math reasoning assistant. Show your steps and give a final answer.";
+const INSTRUCTION = "Solve the problem step by step. On the last line write: #### <final numeric answer>.";
+const STOPS = ["<|im_start|>", "assistant\n", "\n\nQuestion:"];
+
+const MODELS = [
+  {key:"sft", label:"SFT"},
+  {key:"e2b", label:"RFT（验证）"},
+  {key:"a2",  label:"RFT（不验证）"},
+  {key:"dpo", label:"DPO"},
+  {key:"base",label:"Base"},
+];
+const selected = new Set(MODELS.map(m => m.key));
+
+const $ = id => document.getElementById(id);
+const endpointInput = $("endpoint");
+const saved = localStorage.getItem("mathEndpoint");
+if (saved) endpointInput.value = saved;
+endpointInput.addEventListener("change", () => localStorage.setItem("mathEndpoint", endpointInput.value.trim()));
+
+// 与 src/math_posttrain/prompts.py: build_chat_messages + QWEN_CHATML_TEMPLATE 等价
+function buildPrompt(question){
+  return `<|im_start|>system\n${SYSTEM}<|im_end|>\n`
+       + `<|im_start|>user\n${question}\n\n${INSTRUCTION}<|im_end|>\n`
+       + `<|im_start|>assistant\n`;
+}
+
+function extractAnswer(text){
+  const m = text.match(/####\s*([-+]?\d[\d,]*(?:\.\d+)?)/);
+  return m ? m[1].replace(/,/g, "") : null;
+}
+function norm(x){ return x === null ? null : String(parseFloat(x)); }
+
+function renderChips(){
+  $("chips").innerHTML = "";
+  for (const m of MODELS){
+    const el = document.createElement("div");
+    el.className = "chip" + (selected.has(m.key) ? " on" : "");
+    el.textContent = m.label;
+    el.onclick = () => {
+      selected.has(m.key) ? selected.delete(m.key) : selected.add(m.key);
+      renderChips();
+    };
+    $("chips").appendChild(el);
+  }
+}
+
+async function ping(){
+  const base = endpointInput.value.trim().replace(/\/$/, "");
+  $("pingState").textContent = "连接中…";
+  try{
+    const r = await fetch(`${base}/v1/models`, {method:"GET"});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const names = (data.data || []).map(x => x.id).join(", ");
+    $("pingState").textContent = `已连接（${names || "ok"}）`;
+    $("hintbox").style.display = "none";
+  }catch(e){
+    $("pingState").textContent = "连接失败";
+    $("hintbox").style.display = "block";
+  }
+}
+
+async function askOne(base, model, prompt, t0){
+  const started = performance.now();
+  const resp = await fetch(`${base}/v1/completions`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      model, prompt, max_tokens: 512, temperature: 0,
+      stop: STOPS, skip_special_tokens: true
+    })
+  });
+  const latency = Math.round(performance.now() - started);
+  if(!resp.ok){
+    const txt = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${txt.slice(0,160)}`);
+  }
+  const data = await resp.json();
+  const text = (data.choices && data.choices[0] && data.choices[0].text) || "";
+  return {text, latency, tokens: (data.usage && data.usage.completion_tokens) || null};
+}
+
+function cardHTML(model, state){
+  const label = MODELS.find(m => m.key === model).label;
+  let badge = `<span class="badge pend">等待</span>`;
+  if (state.status === "done"){
+    const ok = state.judged;
+    badge = ok === null ? `<span class="badge pend">答案 ${state.answer ?? "无"}</span>`
+      : `<span class="badge ${ok ? "ok" : "bad"}">${ok ? "✓ 正确" : "✗ 错误"} · ${state.answer ?? "无"}</span>`;
+  } else if (state.status === "error"){
+    badge = `<span class="badge bad">失败</span>`;
+  }
+  const meta = state.latency ? `${state.latency} ms` : "";
+  const body = state.status === "error"
+    ? `<div class="err">${state.error}</div>`
+    : `<pre>${state.text ? escapeHtml(state.text) : (state.status === "pending" ? "请求中…" : "")}</pre>`;
+  return `<div class="card"><h3>${label} ${badge} <span class="meta">${meta}</span></h3>${body}</div>`;
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+async function askAll(){
+  const base = endpointInput.value.trim().replace(/\/$/, "");
+  const question = $("question").value.trim();
+  const reference = $("reference").value.trim();
+  if (!question){ alert("先填一道题"); return; }
+
+  const prompt = buildPrompt(question);
+  const models = MODELS.filter(m => selected.has(m.key));
+  if (!models.length){ alert("至少选一个模型"); return; }
+
+  $("askBtn").disabled = true;
+  const states = {};
+  models.forEach(m => states[m.key] = {status:"pending"});
+  const paint = () => $("grid").innerHTML = models.map(m => cardHTML(m.key, states[m.key])).join("");
+  paint();
+
+  const ref = reference ? norm(reference) : null;
+
+  await Promise.all(models.map(async m => {
+    try{
+      const r = await askOne(base, m.key, prompt);
+      const answer = extractAnswer(r.text);
+      const judged = ref === null ? null : (answer !== null && norm(answer) === ref);
+      states[m.key] = {status:"done", text:r.text, latency:r.latency, tokens:r.tokens, answer, judged};
+    }catch(e){
+      states[m.key] = {status:"error", error:String(e.message || e)};
+      $("hintbox").style.display = "block";
+    }
+    paint();
+  }));
+
+  $("askBtn").disabled = false;
+}
+
+renderChips();
+$("pingBtn").onclick = ping;
+$("askBtn").onclick = askAll;
+ping();
+</script>
+</body>
+</html>

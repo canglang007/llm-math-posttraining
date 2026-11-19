@@ -102,8 +102,10 @@ scripts/         数据构造、训练、采样、评测、校准、审计、失
 src/             数据/答案判定/prompt/训练/评测的库代码
 tests/           81 个单测（数据纪律、答案判定、口径守卫、比对逻辑）
 experiments/     模型 adapter、逐题预测 jsonl（eval/、vllm-dev200/、vllm-test/）
+deploy/          服务化：serve.sh（vLLM 多 LoRA 一键启动）+ 部署说明（按需启停，非常开）
 docs/            main-results（三套口径）、failure-analysis-test、issue-log、设计与数据溯源
 demo/comparison.html  可交互逐题对比（11 档分数 + 同题五模型回答），由 scripts/build_comparison_demo.py 生成
+demo/live.html        实时对比页：连本地 vLLM 服务，同题并发问 5 个模型（口径与评测一致）
 ```
 
 ## 快速开始
@@ -146,6 +148,17 @@ python scripts/compare_inference_backends.py \
   --baseline experiments/eval/sft-v3-ckpt400-dev200.jsonl \
   --candidate experiments/eval/sft-v3-ckpt400-dev200-vllm-bf16.jsonl --dataset gsm8k
 ```
+
+## 服务化（按需启停，非常开）
+
+```bash
+bash deploy/serve.sh          # 起 vLLM 服务：base + sft/e2b/a2/dpo 四个 LoRA，OpenAI 兼容接口
+curl http://localhost:8000/v1/models   # 验证
+```
+
+用途：面试前一天起一次、跑通一条请求、录 2 分钟演示，当天不必现场验证。
+解码与 prompt 与评测完全一致（greedy、同一 ChatML 模板、同一组 stop 串），
+所以线上答案和文档里的分数可以互相对照。详见 `deploy/README.md`。
 
 ## 文档导航
 
