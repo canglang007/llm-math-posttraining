@@ -18,14 +18,36 @@ GPUS=0.80 bash deploy/serve.sh            # 显存紧张时降占比
 ```bash
 curl -s http://localhost:8000/v1/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"sft","prompt":"<|im_start|>system\nYou are a careful math reasoning assistant. Show your steps and give a final answer.<|im_end|>\n<|im_start|>user\nAnne has 15 packs of 60 sweets, keeps 2 packs and divides the rest among 10 friends. How many each?\n\nSolve the problem step by step. On the last line write: #### <final numeric answer>.<|im_end|>\n<|im_start|>assistant\n","max_tokens":256,"temperature":0}'
+  -d '{"model":"sft","prompt":"<|im_start|>system\nYou are a careful math reasoning assistant. Show your steps and give a final answer.<|im_end|>\n<|im_start|>user\nAnne has 15 packs of 60 sweets, keeps 2 packs and divides the rest among 10 friends. How many each?\n\nSolve the problem step by step. On the last line write: #### <final numeric answer>.<|im_end|>\n<|im_start|>assistant\n","max_tokens":256,"temperature":0,"stop":["<|im_start|>","assistant\n","\n\nQuestion:"],"stop_token_ids":[151645,151644],"skip_special_tokens":true}'
 ```
 
 期望输出里出现 `#### 78`。换 `"model":"a2"` 就能看到不验证版本的回答（同一题常给出不同数字）。
 
+> **`stop_token_ids` 不能省**：`skip_special_tokens=true` 会把 `<|im_start|>` 从解码文本里剥掉，
+> 只靠 `stop` 字符串在 `<|im_end|>` 处停不住，模型会续写下一轮对话、`####` 抓到错的答案。
+> 实测漏掉它时 SFT 与离线一致率从 20/20 掉到 18/20。
+
+## 2.5 在自己电脑上看演示页（需要 SSH 端口转发）
+
+`demo/live.html` 在**你本地浏览器**里跑，它访问的 `localhost:8000` 是你自己的电脑，
+所以要在本地开一条隧道指向服务器：
+
+```bash
+ssh -N -L 8000:localhost:8000 -p <端口> root@<服务器地址>
+```
+
+然后双击打开 `demo/live.html`，端点填 `http://localhost:8000`，点「连接」→ 输入题目 → 五个模型并排返回。
+
+（服务已开 `--allowed-origins '["*"]'`；vLLM 0.34 起跨域默认关闭，不加这个参数浏览器会报
+`Disallowed CORS origin`——这是必须项，不是安全可选项。）
+
 ## 3. 停止
 
 `Ctrl+C`，或 `pkill -f "vllm serve"`。服务无状态，重启不影响任何数据。
+
+> 注意：别在**同一条命令**里既写 `pkill -f "vllm serve"` 又通过 ssh 远程执行——
+> `pkill -f` 会匹配到那条 ssh 命令自身（命令行里含同样的字符串），把自己的会话杀掉。
+> 远程操作时先 `ps -ef | grep vllm` 拿 pid，再 `kill <pid>`。
 
 ## 显存与并发
 
