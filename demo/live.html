@@ -60,8 +60,12 @@
 
 <div class="main">
   <div class="hintbox" id="hintbox">
-    还没有连上服务：先在服务器上运行 <code>bash deploy/serve.sh</code>（约 1~2 分钟启动），
-    再把上面的地址改成该服务器的 <code>http://IP:8000</code>。面试当天不必现场验证也可以——这段留作演示。
+    还没有连上服务。最常见的原因是<strong>没开 SSH 端口转发</strong>——本页在你自己电脑的浏览器里运行，
+    <code>localhost:8000</code> 指的是你的电脑而不是服务器。按下面两步做：
+    <br>① 服务器上启动服务：<code>bash deploy/serve.sh</code>（约 1~2 分钟）
+    <br>② 本地另开一个终端，保持窗口不关：
+    <code>ssh -N -L 8000:localhost:8000 -p &lt;端口&gt; root@&lt;服务器地址&gt;</code>
+    <br>然后点「测试连接」。面试当天不必现场验证——这段留作演示录屏即可。
   </div>
 
   <div class="field">
