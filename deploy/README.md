@@ -38,6 +38,13 @@ ssh -N -L 8000:localhost:8000 -p <端口> root@<服务器地址>
 
 然后双击打开 `demo/live.html`，端点填 `http://localhost:8000`，点「连接」→ 输入题目 → 五个模型并排返回。
 
+实机运行截图（同一道题：SFT 给 78 正确，RFT/RFT-不验证/DPO 三者都算成 `900-2*60=840` 给 84）：
+
+![实时多模型对比](assets/demo-live-screenshot.png)
+
+> 注意：**不要在 IDE 的内嵌预览面板里点「测试连接」**——宿主应用的沙箱会拦截对 localhost 的请求，
+> 页面会显示连接失败。用浏览器直接打开 `file://` 路径即可（已用 `--allowed-origins '["*"]'` 放开跨域）。
+
 （服务已开 `--allowed-origins '["*"]'`；vLLM 0.34 起跨域默认关闭，不加这个参数浏览器会报
 `Disallowed CORS origin`——这是必须项，不是安全可选项。）
 
