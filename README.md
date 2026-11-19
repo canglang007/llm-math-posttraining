@@ -15,8 +15,9 @@
 | 采样数据不经验证会伤模型 | 验证版 0.8120 vs 不验证版 0.7945，**+1.74pt** | p=0.022 |
 | 其余方法均无显著增益 | 最好的 DPO(26 对) +0.91pt，其余 −1.0~+0.76pt | p≥0.23 |
 
-另附一个方法论副产物：**换推理引擎前必须先测尺子**。HF 4bit 与 vLLM bf16 的逐题一致率只有 84.5%，
-拆解后确认主因是 4bit 量化噪声（同精度下两引擎一致率 96.7%），因此两种口径的数字不可混用。
+评测与线上服务统一使用 vLLM（0.34 + bf16 + greedy）。为与历史结果对照，评测前先做口径校准：
+vLLM bf16 与历史 HF 4bit 的逐题一致率 84.5%，同精度下为 96.7%——差异主要来自 4bit 量化噪声，
+因此两种口径的数字不可混用。
 
 ## 主结果：test 1319 题（vLLM 0.34 + bf16 + greedy）
 
@@ -78,8 +79,8 @@ A2 直接把候选全用上（其中 37 条、12.9% 是错误解）。结果：
 | 工程实践 | 具体做法 | 产物 |
 |---|---|---|
 | **消融设计** | A2 对照组与处理组只差一个变量（是否答案验证），其余全部对齐 | `configs/rft_qwen3_4b_12gb_a2nf.yaml` |
-| **口径校准** | 换推理引擎前先测两把尺子：同精度 96.7% 一致，跨精度仅 84.5%，据此判定量化噪声是主因 | `scripts/compare_inference_backends.py` |
-| **双后端评测** | HF（4bit，历史口径）与 vLLM（bf16，现行口径）共存，prompt/停止词/截断完全共用 | `scripts/evaluate_model.py --backend` |
+| **口径校准** | 用 vLLM 评测前先与历史 HF 结果逐题对照：同精度 96.7%、跨精度 84.5%，据此判定量化噪声为主因并统一 bf16 口径 | `scripts/compare_inference_backends.py` |
+| **双后端评测** | HF（4bit，历史口径）与 vLLM（bf16，现行口径）并存，prompt/停止词/截断完全共用 | `scripts/evaluate_model.py --backend` |
 | **统计检验** | 每个对比做 McNemar 配对检验，报 p 值而不是只报均值差 | `docs/main-results.md` |
 | **失败分解** | 把"分数"拆成抽取失败率 × 可解析题正确率，区分"不会答"与"不会收尾" | `docs/failure-analysis-test.md` |
 | **数据纪律** | test 只评一次；train/dev/test 严格隔离；自采样数据一律由公开答案验证 | `scripts/audit_data_integrity.py` |
