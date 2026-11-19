@@ -44,7 +44,21 @@ echo "base      : $BASE_MODEL"
 echo "port      : $PORT    gpu_util: $GPUS    max_len: $MAX_LEN"
 for entry in "${MODULES[@]}"; do echo "lora      : $entry"; done
 
-exec vllm serve "$BASE_MODEL" \
+# vllm 装在独立 conda 环境里，不在默认 PATH 上——自动探测，也允许 VLLM_BIN 覆盖
+VLLM_BIN="${VLLM_BIN:-}"
+if [ -z "$VLLM_BIN" ]; then
+  if command -v vllm >/dev/null 2>&1; then
+    VLLM_BIN="$(command -v vllm)"
+  elif [ -x /data/miniconda/envs/vllm/bin/vllm ]; then
+    VLLM_BIN=/data/miniconda/envs/vllm/bin/vllm
+  else
+    echo "[ERROR] 找不到 vllm 可执行文件：先激活对应环境，或用 VLLM_BIN=/path/to/vllm 指定" >&2
+    exit 1
+  fi
+fi
+echo "vllm      : $VLLM_BIN"
+
+exec "$VLLM_BIN" serve "$BASE_MODEL" \
   --served-model-name base \
   --port "$PORT" \
   --dtype bfloat16 \

@@ -52,3 +52,17 @@ def test_greedy_decoding_is_requested() -> None:
     html = LIVE_HTML.read_text(encoding="utf-8")
     assert "temperature: 0" in html
     assert "max_tokens: 512" in html
+
+
+def test_stop_token_ids_are_sent() -> None:
+    """线上请求必须同时给 stop_token_ids。
+
+    踩过的坑：skip_special_tokens=true 会把 <|im_start|> 从解码文本里剥掉，
+    只靠 stop 字符串在 <|im_end|> 处停不下来，模型续写下一轮对话后答案抽取错位
+    （实测 SFT 从 90% 掉到会错抓 ####）。Qwen3 ChatML 的 id 是固定的：
+    <|im_end|>=151645、<|im_start|>=151644。
+    """
+    html = LIVE_HTML.read_text(encoding="utf-8")
+    assert "const STOP_TOKEN_IDS = [151645, 151644];" in html
+    assert "stop_token_ids: STOP_TOKEN_IDS" in html
+    assert "include_stop_str_in_output: false" in html

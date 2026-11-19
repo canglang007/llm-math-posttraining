@@ -44,9 +44,27 @@ curl -s http://localhost:8000/v1/completions \
   （与 `src/math_posttrain/prompts.py` 的 `build_chat_messages` + ChatML 模板等价）
 - 解码：`temperature=0`（greedy）、`max_tokens=512`、
   `stop=["<|im_start|>", "assistant\n", "\n\nQuestion:"]`（与评测 `generation_stop_strings()` 相同）
+- **`stop_token_ids=[151645, 151644]`（`<|im_end|>`, `<|im_start|>`）必须一起给。**
+  踩过的坑：`skip_special_tokens=true` 会把 `<|im_start|>` 从解码文本里剥掉，
+  只靠 `stop` 字符串在 `<|im_end|>` 处停不下来，模型会续写下一轮对话，
+  答案抽取抓到另一个 `####`（实测 SFT 从 20/20 掉到 18/20）。
 
 `demo/live.html` 已内置这套口径；`tests/test_live_demo_prompt_parity.py` 会在每次跑单测时检查前端硬编码的
-system prompt 与指令串是否与 Python 侧一致，防止两边悄悄漂移。
+system prompt、指令串与 `stop_token_ids` 是否与 Python 侧一致，防止两边悄悄漂移。
+
+### 线上与离线的实测一致率（2026-11-20，5060 Ti 16GB）
+
+同一批 20 道 test 题，用与离线完全相同的采样参数分别请求线上服务、比对离线预测文件：
+
+| 模型 | 逐题一致 | 说明 |
+|---|---|---|
+| SFT | **20/20** | 完全一致 |
+| RFT（不验证，a2） | **17/20** | 3 题确定性地走了不同推理路径（如 `2971 → 221`），三次重测结果相同 |
+
+差异来源：**多 LoRA 在线内核（`--max-loras 5`）与离线单 LoRA 进程的矩阵乘路径不同**，
+bf16 下同精度也会在近阈值 token 上翻转，长思维链会把一次翻转放大成完全不同的解。
+这不是 bug，但意味着：**演示以线上实际输出为准，不要用演示页面去验证文档里的分数**；
+文档分数来自离线全量评测（同一进程、同一 LoRA）。
 
 ## 常见问题
 

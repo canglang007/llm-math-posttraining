@@ -80,7 +80,7 @@
   </div>
 
   <button id="askBtn">并发提问</button>
-  <div class="note">解码口径：temperature=0、max_tokens=512、stop=["&lt;|im_start|&gt;", "assistant\\n", "\\n\\nQuestion:"]——与评测脚本完全一致，所以这里的答案可与文档中的分数对照。</div>
+  <div class="note">解码口径：temperature=0、max_tokens=512、stop 字符串 + stop_token_ids（&lt;|im_end|&gt;/&lt;|im_start|&gt;）——与评测脚本完全一致，所以这里的答案可与文档中的分数对照。注意：本页走的是多 LoRA 在线内核，与离线单 LoRA 评测在个别题上会有确定性翻转（实测 SFT 20/20、RFT-不验证 17/20）。</div>
 
   <div class="grid" id="grid"></div>
 </div>
@@ -89,6 +89,10 @@
 const SYSTEM = "You are a careful math reasoning assistant. Show your steps and give a final answer.";
 const INSTRUCTION = "Solve the problem step by step. On the last line write: #### <final numeric answer>.";
 const STOPS = ["<|im_start|>", "assistant\n", "\n\nQuestion:"];
+// 必须同时传 stop_token_ids：skip_special_tokens=true 会把 <|im_start|> 从解码文本里剥掉，
+// 光靠 stop 字符串在 <|im_end|> 处停不下来，模型会续写下一轮对话、答案抽取错位。
+// 与 src/math_posttrain/prompts.py: resolve_eos_token_ids 一致（<|im_end|>, <|im_start|>）。
+const STOP_TOKEN_IDS = [151645, 151644];
 
 const MODELS = [
   {key:"sft", label:"SFT"},
@@ -155,7 +159,8 @@ async function askOne(base, model, prompt, t0){
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
       model, prompt, max_tokens: 512, temperature: 0,
-      stop: STOPS, skip_special_tokens: true
+      stop: STOPS, stop_token_ids: STOP_TOKEN_IDS,
+      include_stop_str_in_output: false, skip_special_tokens: true
     })
   });
   const latency = Math.round(performance.now() - started);
