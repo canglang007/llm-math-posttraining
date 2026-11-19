@@ -83,7 +83,9 @@ def load_eval_model(
     adapter: str | None = None,
     compute_dtype: str = "bfloat16",
     force_chat_template: bool = False,
+    quantize: bool = True,
 ):
+    """加载评测模型。``quantize=False`` 走 bf16 全精度，只用于口径诊断。"""
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -94,14 +96,17 @@ def load_eval_model(
     # 与训练侧保持一致：SFT 用 QWEN_CHATML_TEMPLATE 训练时，评测也必须用同一个模板。
     if force_chat_template or getattr(tokenizer, "chat_template", None) is None:
         tokenizer.chat_template = QWEN_CHATML_TEMPLATE
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        quantization_config=BitsAndBytesConfig(
+    quantization_config = None
+    if quantize:
+        quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=dtype,
             bnb_4bit_use_double_quant=True,
-        ),
+        )
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        quantization_config=quantization_config,
         torch_dtype=dtype,
         device_map="auto",
     )

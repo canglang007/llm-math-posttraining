@@ -111,6 +111,8 @@ def generate_hf(examples, prompts, tokenizer, args) -> list[str]:
         # 训练时强制了 QWEN_CHATML_TEMPLATE 的 adapter，评测必须同模板，
         # 否则训练/推理分布不一致，数字不可比。
         force_chat_template=bool(args.adapter) or args.force_chat_template,
+        # 默认保持 4bit（历史口径）；--no-quantize 只用于量化/引擎的诊断实验。
+        quantize=not args.no_quantize,
     )
     base_eos = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
     eos_ids = resolve_eos_token_ids(tokenizer, base_eos)
@@ -222,12 +224,19 @@ def main() -> None:
         help="vllm 后端每次提交给引擎的请求数（只影响显存峰值与进度打印）",
     )
     parser.add_argument("--output", type=Path, default=Path("data/processed/predictions/predictions.jsonl"))
+    parser.add_argument(
+        "--no-quantize",
+        action="store_true",
+        help="hf 后端专用诊断开关：bf16 全精度加载（不用 4bit），仅用于量化敏感性实验",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if args.batch_size < 1:
         parser.error("--batch-size must be >= 1")
     if args.vllm_chunk < 1:
         parser.error("--vllm-chunk must be >= 1")
+    if args.no_quantize and args.backend != "hf":
+        parser.error("--no-quantize 只对 --backend hf 有意义")
 
     examples = load_examples(args.data_file, source=args.dataset, split=args.split)
     if args.limit:

@@ -272,3 +272,11 @@
   - 单测 +12（口径守卫：greedy 语义、停止条件、prompt 渲染、adapter rank、缺 vllm 的报错、比对逻辑），81 passed。
 - **待做（需服务器）**：用 vLLM 重跑已有 HF 分数的 dev-200，测一致率（预计 >98%）并记录；一致率异常（<95%）则停查，不硬切。校准通过后 test 终评统一走 vLLM 并在文档注明口径。
 - 已知差异（必须如实记录，不能隐瞒）：vLLM 内核与 HF 不同；即使 quantization=bitsandbytes 也无法保证逐 bit 一致，greedy 在极低概率差 token 上可能翻转。
+
+## 2026-11-19 13:30 vLLM 口径校准完成 + dev-200 bf16 全量重评（Asia/Shanghai UTC+8）
+
+- 环境：新建独立 conda env `vllm`（vLLM 0.34.0 / torch 2.14+cu130 / sm_120 正常），HF 环境（torch 2.10+cu128 / transformers 4.57.6）原封不动；vLLM 0.34 已删除 bitsandbytes 量化方法，故只能走 bf16。
+- 校准：HF 4bit vs vLLM bf16 判分一致率仅 84.5%（31/200 翻转）；拆解诊断（前 60 题）显示 HF bf16 vs HF 4bit 85.0%、HF bf16 vs vLLM bf16 96.7% → **差异主因是 4bit 量化噪声，不是引擎**。
+- 全量重评：vLLM bf16 跑完 11 档 dev-200（每模型约 75 秒，共约 15 分钟），结果写入 `experiments/eval/vllm-dev200/`。
+- **结论修正**：bf16 口径下 A2(0.875) ≈ E2b(0.870)（p=1.000），"不验证伤模型"的判断不成立；与 SFT 的差异全部不显著（p≥0.267）。唯一显著效应仍是 SFT vs Base（+8.5pt，p=0.016）。
+- 遗留：test 终评（1319 题）待用户确认模型清单后开跑，vLLM 下预计每模型约 8 分钟。
