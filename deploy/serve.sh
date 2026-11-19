@@ -58,6 +58,8 @@ if [ -z "$VLLM_BIN" ]; then
 fi
 echo "vllm      : $VLLM_BIN"
 
+# --allowed-origins '["*"]' 是必需的：vLLM 0.34 起「跨域默认关闭」（allowed_origins 默认空列表），
+# 而双击打开的 demo/live.html 的 Origin 是 null，会被 uvicorn 直接拒成 "Disallowed CORS origin"。
 exec "$VLLM_BIN" serve "$BASE_MODEL" \
   --served-model-name base \
   --port "$PORT" \
@@ -68,4 +70,5 @@ exec "$VLLM_BIN" serve "$BASE_MODEL" \
   --max-loras "$MAX_LORAS" \
   --max-lora-rank "$LORA_RANK" \
   --lora-modules "${MODULES[@]}" \
+  --allowed-origins '["*"]' \
   --trust-remote-code
