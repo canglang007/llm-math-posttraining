@@ -43,6 +43,7 @@
   .err{color:var(--bad);font-size:12px;margin-top:8px}
   .note{font-size:12px;color:var(--muted);margin-top:12px}
   .hintbox{background:#fdf8e8;border:1px solid #f0e3b8;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#6a5a1e;margin-bottom:14px;display:none}
+  .hintbox .err{display:block;margin-top:6px;color:#a33;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 </style>
 </head>
 <body>
@@ -66,6 +67,7 @@
     <br>② 本地另开一个终端，保持窗口不关：
     <code>ssh -N -L 8000:localhost:8000 -p &lt;端口&gt; root@&lt;服务器地址&gt;</code>
     <br>然后点「测试连接」。面试当天不必现场验证——这段留作演示录屏即可。
+    <br><span id="errDetail" class="err"></span>
   </div>
 
   <div class="field">
@@ -153,6 +155,9 @@ async function ping(){
   }catch(e){
     $("pingState").textContent = "连接失败";
     $("hintbox").style.display = "block";
+    // 把真实原因写出来：TypeError=网络层被拒（隧道没通/被沙箱拦），Else 多为 HTTP 状态码
+    const detail = $("errDetail");
+    if (detail) detail.textContent = `错误详情：${e.name}: ${e.message}`;
   }
 }
 
