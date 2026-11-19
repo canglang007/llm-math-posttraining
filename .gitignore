@@ -4,10 +4,14 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 data/
-experiments/
+experiments/*
+!experiments/eval/
 models/
 *.safetensors
 .env
 .env.*
 .DS_Store
 .workbuddy/
+
+# 个人/过程类文档：只本地保留，不进仓库
+internal/

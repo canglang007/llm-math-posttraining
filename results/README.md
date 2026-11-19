@@ -11,7 +11,7 @@ python scripts/audit_data_integrity.py --json results/data-audit.json
 | 文件 | 内容 |
 |---|---|
 | `summary.json` | 每个 run 的题数/正确数/准确率/抽取失败/平均字符数 + 数据集与解码口径 |
-| `summary.csv` | 同一份内容的表格版，方便贴进表格或简历附件 |
+| `summary.csv` | 同一份内容的表格版，方便贴进表格工具 |
 | `pairwise.csv` | 每个 run 与参照 run（默认 SFT）的配对四格 + 净差 + McNemar 精确 p 值 |
 | `data-audit.json` | 数据纪律审计：dev 泄漏、id 唯一性、训练数据来源、评测集合一致性 |
 

@@ -1,13 +1,14 @@
 # LLM Math Post-Training：一个可量化的后训练数据引擎
 
 用一个 4B 模型（Qwen3-4B-Base）和公开数据（GSM8K），把**"后训练的数据怎么造、怎么验、值多少钱"**
-做成可复现、可检验的实验：11 个模型档位、1319 题 test 终评、每一步都做配对显著性检验，
+做成可复现、可检验的实验：11 个模型权重（Base / SFT / 3 个 RFT / 3 个 DPO / 2 个 GRPO）、
+1319 题 test 终评、每一步都做配对显著性检验，
 并且如实报告**9 个方法对比里有 8 个没有显著增益**。
 
 > 一句话主张：**数据引擎的价值有两层——SFT 用官方 CoT 建立格式地基，自采样数据必须过答案验证才能用。**
 > 其余所有方法（RFT / DPO / GRPO）在这个规模上都无法稳定超过 SFT。
 
-## 三十秒摘要（全部为 test 1319 题的权威数字）
+## 摘要
 
 | 结论 | 数字 | 显著性 |
 |---|---|---|
@@ -74,7 +75,7 @@ A2 直接把候选全用上（其中 37 条、12.9% 是错误解）。结果：
   但 26 题只够过拟合（dev 0.835）。
 - **链式不如平行**：SFT→DPO 0.8203，SFT→RFT→DPO 0.8014。上游退化会被下游继承。
 
-## 方法论：这个项目做了什么"不只是训练"
+## 工程与实验方法
 
 | 工程实践 | 具体做法 | 产物 |
 |---|---|---|
@@ -84,9 +85,9 @@ A2 直接把候选全用上（其中 37 条、12.9% 是错误解）。结果：
 | **统计检验** | 每个对比做 McNemar 配对检验，报 p 值而不是只报均值差 | `docs/main-results.md` |
 | **失败分解** | 把"分数"拆成抽取失败率 × 可解析题正确率，区分"不会答"与"不会收尾" | `docs/failure-analysis-test.md` |
 | **数据纪律** | test 只评一次；train/dev/test 严格隔离；自采样数据一律由公开答案验证 | `scripts/audit_data_integrity.py` |
-| **可复现** | 81 个单测；配置化训练；所有表格由脚本从预测 jsonl 重算，不手抄 | `pytest -q` |
+| **可复现** | 91 个单测；配置化训练；所有表格由脚本从预测 jsonl 重算，不手抄 | `pytest -q` |
 
-## 结论边界（如实写）
+## 局限与结论边界
 
 - **规模小**：单模型（4B）、单数据集（GSM8K）。所有"不显著"的结论只对"这个规模 + dev-200/test"成立，
   不能外推成"DPO 没用"。
@@ -101,11 +102,12 @@ A2 直接把候选全用上（其中 37 条、12.9% 是错误解）。结果：
 configs/         训练配置（SFT / RFT / DPO / GRPO / A2 对照组，24GB 与 12GB 两套）
 scripts/         数据构造、训练、采样、评测、校准、审计、失败分析
 src/             数据/答案判定/prompt/训练/评测的库代码
-tests/           81 个单测（数据纪律、答案判定、口径守卫、比对逻辑）
-experiments/     模型 adapter、逐题预测 jsonl（eval/、vllm-dev200/、vllm-test/）
+tests/           91 个单测（数据纪律、答案判定、口径守卫、比对逻辑）
+experiments/eval/     全部逐题预测 jsonl（**入库**，可直接核对本文每个数字）
+experiments/{sft,rft,dpo,grpo}/  模型 adapter 与 checkpoint（**不入库**，体积大；脚本可复现）
 deploy/          服务化：serve.sh（vLLM 多 LoRA 一键启动）+ 部署说明（按需启停，非常开）
 docs/            main-results（三套口径）、failure-analysis-test、issue-log、设计与数据溯源
-demo/comparison.html  可交互逐题对比（11 档分数 + 同题五模型回答），由 scripts/build_comparison_demo.py 生成
+demo/comparison.html  可交互逐题对比（11 个模型的分数 + 同题五模型回答），由 scripts/build_comparison_demo.py 生成
 demo/live.html        实时对比页：连本地 vLLM 服务，同题并发问 5 个模型（口径与评测一致）
 ```
 
@@ -113,7 +115,7 @@ demo/live.html        实时对比页：连本地 vLLM 服务，同题并发问 
 
 ```bash
 python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/pytest -q          # 81 passed
+.venv/bin/pytest -q          # 91 passed
 
 python scripts/prepare_data.py --dataset gsm8k
 python scripts/build_sft_data.py --dataset gsm8k --split train
@@ -157,9 +159,18 @@ bash deploy/serve.sh          # 起 vLLM 服务：base + sft/e2b/a2/dpo 四个 L
 curl http://localhost:8000/v1/models   # 验证
 ```
 
-用途：面试前一天起一次、跑通一条请求、录 2 分钟演示，当天不必现场验证。
+用途：需要时起一个服务，跑通一条请求即可确认可用；用完即停，不需要常驻。
 解码与 prompt 与评测完全一致（greedy、同一 ChatML 模板、同一组 stop 串），
 所以线上答案和文档里的分数可以互相对照。详见 `deploy/README.md`。
+
+## 数据与产物在哪
+
+- **逐题预测**：`experiments/eval/`（HF 口径 dev）、`experiments/eval/vllm-dev200/`（bf16 dev）、
+  `experiments/eval/vllm-test/`（test 11 个模型）——每条含 `id / question / reference / prediction`，
+  可用 `scripts/eval_predictions.py` 重新打分，本文所有准确率与 McNemar p 值都能从这些文件重算。
+- **汇总表**：`results/`（summary / pairwise / 数据审计）。
+- **模型权重**：不入库。训练配置与脚本在 `configs/`、`scripts/`，按「快速开始」可重训。
+- **原始数据**：`data/` 不入库，由 `scripts/prepare_data.py` 从公开 GSM8K 生成。
 
 ## 文档导航
 
@@ -170,9 +181,8 @@ curl http://localhost:8000/v1/models   # 验证
 | `docs/issue-log.md` | 问题与决策记录（只追加，含流程教训与口径变更） |
 | `docs/experiment-design.md` | 数据、方法、实验矩阵、指标定义 |
 | `docs/data-provenance.md` | 数据来源、许可证、切分与污染说明 |
-| `docs/project-charter.md` | 项目背景与目标（教育场景叙事） |
 
-## 下一步（按收益排序）
+## 后续工作
 
 1. **多 seed 重复**：为 A2 vs E2b 的 1.74pt（p=0.022）提供稳健性证据（3 个 seed × 2 组）；
 2. **MATH 跨分布**：检验"验证器贡献"是否在更难分布上放大（数据已备：6998 train / 500 dev）；

@@ -64,7 +64,7 @@ let active = null;
 function pct(x){return (x*100).toFixed(2)+'%';}
 
 function renderStats(){
-  let h = '<div class="gtitle">test 1319 题 · 11 档（权威口径）</div>';
+  let h = '<div class="gtitle">test 1319 题 · 11 个模型（权威口径）</div>';
   h += '<table><tr><th>模型</th><th class="num">准确率</th><th class="num">抽取失败</th><th>vs SFT</th></tr>';
   for(const s of DATA.stats){
     const hl = (s.name.includes('SFT')||s.name.includes('A2')) ? ' class="hl"' : '';

@@ -17,7 +17,6 @@
 
 ## 文档
 
-- `docs/project-charter.md`：背景与目标
 - `docs/experiment-design.md`：数据、方法、实验矩阵、指标
 - `docs/data-provenance.md`：数据来源和有效性边界
 - `docs/issue-log.md`：问题记录，只追加不删
