@@ -2,14 +2,19 @@
 
 更新时间：2026-11-15 18:20（Asia/Shanghai，UTC+08:00）
 
-数据来源：`data/server-backup/baseline/gsm8k-dev-probe200-final.jsonl`
-（E0 = Qwen3-4B-Base 4bit，dev 200 题，greedy，`--batch-size 1`，max_new_tokens=512）。
+口径：E0 = Qwen3-4B-Base + 4bit NF4，dev 前 200 题，greedy，batch=1，max_new_tokens=512。
 
-复现：
+复现（原始预测文件未入库，先重新生成再分析）：
 
 ```bash
+# 1) 用当时的 HF 4bit 口径重跑 dev-200
+python scripts/evaluate_model.py --model-path <Qwen/Qwen3-4B-Base> \
+  --data-file data/processed/sft/gsm8k-dev.raw.jsonl --dataset gsm8k --split dev --limit 200 \
+  --output experiments/eval/e0-dev200.jsonl
+
+# 2) 生成失败模式报告
 python scripts/analyze_e0_failures.py \
-  --predictions data/server-backup/baseline/gsm8k-dev-probe200-final.jsonl \
+  --predictions experiments/eval/e0-dev200.jsonl \
   --output experiments/analysis/e0-failure-report.json
 ```
 

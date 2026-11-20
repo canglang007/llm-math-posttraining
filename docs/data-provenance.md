@@ -1,6 +1,6 @@
 # 数据来源与有效性边界
 
-更新时间：2026-11-15 01:15（Asia/Shanghai，UTC+08:00）
+更新时间：2026-11-20 16:35（Asia/Shanghai，UTC+08:00）
 
 ## GSM8K
 
@@ -21,6 +21,7 @@
 - 切分：train 7.5k / test 5k；常用 MATH500 子集
 - 答案格式：`\boxed{...}`
 - 评测：抽取 boxed 答案，sympy 等价判断；官方 eval 脚本和 MATH500 口径
+- **本项目最终未使用 MATH**：数据已下载备查，但实验主线只做 GSM8K（原因见 `docs/main-results.md` 的「局限与结论边界」）
 
 ## 实际下载记录
 

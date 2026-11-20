@@ -15,8 +15,11 @@ python scripts/audit_data_integrity.py --json results/data-audit.json
 | `pairwise.csv` | 每个 run 与参照 run（默认 SFT）的配对四格 + 净差 + McNemar 精确 p 值 |
 | `data-audit.json` | 数据纪律审计：dev 泄漏、id 唯一性、训练数据来源、评测集合一致性 |
 
-口径：GSM8K dev-200（从 train 划出的 500 题中的前 200 题），greedy 解码，batch_size=1，
-判分统一走 `math_posttrain.answers.is_correct`。
+口径：GSM8K **dev-200**（从 train 划出的 500 题中的前 200 题），greedy 解码，batch_size=1，
+HF 4bit（生成于 2026-11-17）。判分统一走 `math_posttrain.answers.is_correct`。
+
+> 本目录**不含 test 结果**。test 1319 题的权威数字见 `docs/main-results.md` 第一节，
+> 逐题预测在 `experiments/eval/vllm-test/`；两套口径不可混用。
 
 完整表格、结论与解读见 `docs/main-results.md`；
 资产位置、复现命令与已知缺口见 `docs/experiment-artifacts.md`。

@@ -27,7 +27,7 @@ curl -s http://localhost:8000/v1/completions \
 > 只靠 `stop` 字符串在 `<|im_end|>` 处停不住，模型会续写下一轮对话、`####` 抓到错的答案。
 > 实测漏掉它时 SFT 与离线一致率从 20/20 掉到 18/20。
 
-## 2.5 在自己电脑上看演示页（需要 SSH 端口转发）
+## 3. 在本地浏览器查看演示页（需要 SSH 端口转发）
 
 `demo/live.html` 在**本地浏览器**里运行，它访问的 `localhost:8000` 指本机而不是服务器，
 所以要在本地开一条隧道指向服务器：
@@ -42,13 +42,13 @@ ssh -N -L 8000:localhost:8000 -p <端口> root@<服务器地址>
 
 ![实时多模型对比](assets/demo-live-screenshot.png)
 
-> 注意：**不要在 IDE 的内嵌预览面板里点「测试连接」**——宿主应用的沙箱会拦截对 localhost 的请求，
-> 页面会显示连接失败。用浏览器直接打开 `file://` 路径即可（已用 `--allowed-origins '["*"]'` 放开跨域）。
+> 两个容易踩的点：
+> 1. **不要在 IDE 的内嵌预览面板里点「测试连接」**——宿主应用的沙箱会拦截对 localhost 的请求，
+>    页面只会显示连接失败。用浏览器直接打开 `file://` 路径。
+> 2. **`--allowed-origins '["*"]'` 是必需项**：vLLM 0.34 起跨域默认关闭，不加这个参数浏览器报
+>    `Disallowed CORS origin`。`serve.sh` 已内置该参数。
 
-（服务已开 `--allowed-origins '["*"]'`；vLLM 0.34 起跨域默认关闭，不加这个参数浏览器会报
-`Disallowed CORS origin`——这是必须项，不是安全可选项。）
-
-## 3. 停止
+## 4. 停止
 
 `Ctrl+C`，或 `pkill -f "vllm serve"`。服务无状态，重启不影响任何数据。
 
@@ -81,7 +81,7 @@ ssh -N -L 8000:localhost:8000 -p <端口> root@<服务器地址>
 `demo/live.html` 已内置这套口径；`tests/test_live_demo_prompt_parity.py` 会在每次跑单测时检查前端硬编码的
 system prompt、指令串与 `stop_token_ids` 是否与 Python 侧一致，防止两边悄悄漂移。
 
-### 线上与离线的实测一致率（2026-11-20，5060 Ti 16GB）
+### 线上与离线的实测一致率（2026-11-19 22:55，5060 Ti 16GB）
 
 同一批 20 道 test 题，用与离线完全相同的采样参数分别请求线上服务、比对离线预测文件：
 
@@ -92,8 +92,8 @@ system prompt、指令串与 `stop_token_ids` 是否与 Python 侧一致，防�
 
 差异来源：**多 LoRA 在线内核（`--max-loras 5`）与离线单 LoRA 进程的矩阵乘路径不同**，
 bf16 下同精度也会在近阈值 token 上翻转，长思维链会把一次翻转放大成完全不同的解。
-这不是 bug，但意味着：**演示以线上实际输出为准，不要用演示页面去验证文档里的分数**；
-文档分数来自离线全量评测（同一进程、同一 LoRA）。
+这不是 bug，但意味着：**服务响应与离线评测不能逐题对齐**，核对文档分数请用
+`experiments/eval/` 下的预测文件（同一进程、同一 LoRA 跑出来的离线全量评测）。
 
 ## 常见问题
 
@@ -103,7 +103,7 @@ bf16 下同精度也会在近阈值 token 上翻转，长思维链会把一次�
 | 启动报 `max_lora_rank` 不足 | adapter 的 r 大于设置值 | 本项目全为 r=8，若换了新 adapter 用 `LORA_RANK=16` |
 | `404 model not found` | 模型名写错 | 可用名：`base` / `sft` / `e2b` / `a2` / `dpo` |
 | 回答很啰嗦或跑飞 | 没带 stop 串 | 检查请求体里有 `stop` 字段 |
-| 前端请求被浏览器拦截 | 跨域 | 启动时用 `--allowed-origins "*"`（演示用），或用同源页面 |
+| 前端请求被浏览器拦截 | 跨域 | `serve.sh` 已带 `--allowed-origins '["*"]'`；自写启动命令时别忘了加 |
 
 ## 端到端自检（约 2 分钟）
 

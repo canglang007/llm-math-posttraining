@@ -108,6 +108,7 @@ experiments/{sft,rft,dpo,grpo}/  模型 adapter 与 checkpoint（**不入库**�
 deploy/          服务化：serve.sh（vLLM 多 LoRA 一键启动）+ 部署说明（按需启停，非常开）
 docs/            main-results（三套口径）、failure-analysis-test、issue-log、设计与数据溯源
 demo/comparison.html  可交互逐题对比（11 个模型的分数 + 同题五模型回答），由 scripts/build_comparison_demo.py 生成
+demo/index.html       早期探索：maj@8 推理时验证（HF 4bit 口径，非最终主线，数字勿与上表混看）
 demo/live.html        实时对比页：连本地 vLLM 服务，同题并发问 5 个模型（口径与评测一致）
 ```
 
@@ -176,11 +177,14 @@ curl http://localhost:8000/v1/models   # 验证
 
 | 文档 | 内容 |
 |---|---|
-| `docs/main-results.md` | 三套口径的完整表格与配对检验（口径一 HF-4bit dev、口径二 bf16 dev、口径三 vLLM test） |
-| `docs/failure-analysis-test.md` | test 失败分析：抽取失败、错解污染、DPO 改变的是推理路径 |
-| `docs/issue-log.md` | 问题与决策记录（只追加，含流程教训与口径变更） |
-| `docs/experiment-design.md` | 数据、方法、实验矩阵、指标定义 |
-| `docs/data-provenance.md` | 数据来源、许可证、切分与污染说明 |
+| `docs/main-results.md` | **结果汇总**：test 权威表 → 口径校准 → 历史基准 → 时间顺序的结论附录 |
+| `docs/failure-analysis-test.md` | test 失败分析：抽取失败、错解污染、DPO 改变的是推理路径，含可复现的实例 |
+| `docs/e0-failure-analysis.md` | Base 的 27 个抽取失败模式、判分口径敏感度、长度与正确率的关系 |
+| `docs/eos-stop-diagnosis.md` | 停止符问题的定位过程（loss 按位置拆分 → 对照实验 → 换停止符） |
+| `docs/experiment-design.md` | 实验设计初稿 + **计划 vs 最终执行**对照 |
+| `docs/data-provenance.md` | 数据来源、许可证、切分、污染风险与有效性边界 |
+| `docs/experiment-artifacts.md` | 资产台账：每个产物在哪、怎么复现、哪些入库 |
+| `docs/issue-log.md` | 问题记录：现象 → 根因 → 修复 → 验证 → 教训（只追加） |
 
 ## 后续工作
 
