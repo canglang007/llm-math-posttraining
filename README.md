@@ -85,7 +85,7 @@ A2 直接把候选全用上（其中 37 条、12.9% 是错误解）。结果：
 | **统计检验** | 每个对比做 McNemar 配对检验，报 p 值而不是只报均值差 | `docs/main-results.md` |
 | **失败分解** | 把"分数"拆成抽取失败率 × 可解析题正确率，区分"不会答"与"不会收尾" | `docs/failure-analysis-test.md` |
 | **数据纪律** | test 只评一次；train/dev/test 严格隔离；自采样数据一律由公开答案验证 | `scripts/audit_data_integrity.py` |
-| **可复现** | 91 个单测；配置化训练；所有表格由脚本从预测 jsonl 重算，不手抄 | `pytest -q` |
+| **可复现** | 111 个单测；配置化训练；所有表格由脚本从预测 jsonl 重算，不手抄 | `pytest -q` |
 
 ## 局限与结论边界
 
@@ -102,7 +102,7 @@ A2 直接把候选全用上（其中 37 条、12.9% 是错误解）。结果：
 configs/         训练配置（SFT / RFT / DPO / GRPO / A2 对照组，24GB 与 12GB 两套）
 scripts/         数据构造、训练、采样、评测、校准、审计、失败分析
 src/             数据/答案判定/prompt/训练/评测的库代码
-tests/           91 个单测（数据纪律、答案判定、口径守卫、比对逻辑）
+tests/           111 个单测（数据纪律、答案判定、口径守卫、比对逻辑）
 experiments/eval/     全部逐题预测 jsonl（**入库**，可直接核对本文每个数字）
 experiments/{sft,rft,dpo,grpo}/  模型 adapter 与 checkpoint（**不入库**，体积大；脚本可复现）
 deploy/          服务化：serve.sh（服务器 vLLM 多 LoRA）、run_local.sh + local_server.py（本地 MPS 兜底）、
