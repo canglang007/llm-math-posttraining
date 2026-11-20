@@ -162,7 +162,7 @@ python scripts/compare_inference_backends.py \
 | 方式 | 一条命令 | 适用 |
 |---|---|---|
 | **服务器**（vLLM，推荐） | `bash deploy/serve.sh` | 有 16 GB NVIDIA 卡；2.7~4.3 秒/题 |
-| **本地**（transformers + MPS） | `bash deploy/run_local.sh` | 服务器不可用时兜底；10~25 秒/题 |
+| **本地**（transformers + MPS） | `bash deploy/run_local.sh` | 服务器不可用时兜底；20~45 秒/题 |
 
 两者都暴露 `/v1/models` 与 `/v1/completions`，`demo/live.html` 不需要改代码，只换端点。
 解码与 prompt 复用同一份实现（greedy、同一 ChatML 模板、同一组停止词与 eos、同一个截断函数），

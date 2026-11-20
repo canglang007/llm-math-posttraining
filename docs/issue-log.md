@@ -326,3 +326,21 @@
 - 网络坑：本机在代理后，`hf-mirror.com` 不可达而默认端点可用；文档改为「镜像不通就不要设 `HF_ENDPOINT`」。
 - 边界：MPS/CPU 与 CUDA bf16 数值路径不同，本地版**只用于演示与自查，不作为实验数字来源**；
   真模型（4B，8 GB）的本地加载未在本机执行（项目约定 Mac 不跑真模型），首次使用时按 `deploy/README.md` 走。
+
+## 2026-11-20 17:35 本地版真实模型验证：MPS 必须用 eager 注意力（Asia/Shanghai UTC+8）
+
+- 环境：Apple M5 / 16 GB 统一内存 / macOS 27.2.1 / torch 2.11（MPS 可用）/ transformers 5.7 / peft 0.22；
+  底座 `Qwen/Qwen3-4B-Base` 从 **ModelScope** 下载（4 分 36 秒，约 25 MB/s）；HF 直连在本机代理环境下不可用。
+- **踩坑一（工具层）**：先用 `nohup` 起下载，看似「卡在 20 MB」，实为进程随工具调用结束被回收。长时间任务必须用托管后台任务。
+- **踩坑二（必须记住）**：MPS 上 transformers 默认 `sdpa` 注意力会让 Qwen3 输出**退化成无限重复**
+  （同一段推理反复、永远不写 `####`、512 token 跑满），表现为「模型像是坏的」，但 tokenizer 与权重都正常
+  （`<|im_start|>` → 151644 正确；纯文本续写「The capital of France is」→「 Paris. Can you…」正常）。
+  改为 `--attn-implementation eager` 后立刻恢复：SFT 输出干净的 `#### 78` 并正常停止。
+  **已把 eager 设为 MPS 的默认**（`default_attn_implementation()`），并补单测锁住该决策。
+- 真实模型实测（同一道 Anne 糖果题，max_new_tokens=512，greedy）：本地与离线 **4/5 一致**
+  —— Base 78/78、SFT **78/84（不一致）**、E2b 78/78、A2 84/84、DPO 84/84；
+  本地耗时 22~44 秒/题（2.8~5.1 tok/s）。SFT 的分叉方向是「本地给对、离线给错」，说明差异是数值路径而非能力。
+- 另一个 UX 坑：`run_local.sh` 原先固定用 `python3`，而依赖装在 conda 里，导致误报「缺依赖」；
+  已改为自动挑一个同时具备 torch/transformers/peft 的解释器，并在全都不具备时逐个报告缺什么。
+- 结论：本地版**可以用于演示**（能出正确答案、能并排对比），但速度是服务器版的 6~10 倍慢，
+  且与离线评测存在个别题分叉——文档已把「不作为数字来源」写进两条运行方式的对照表。

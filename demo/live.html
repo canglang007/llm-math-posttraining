@@ -86,7 +86,7 @@
   </div>
 
   <button id="askBtn">并发提问</button>
-  <div class="note">解码口径：temperature=0、max_tokens=512、stop 字符串 + stop_token_ids（&lt;|im_end|&gt;/&lt;|im_start|&gt;）——与评测脚本完全一致。速度取决于后端：服务器版（vLLM 多 LoRA）约 3 秒/题，本地版（transformers + MPS）约 10~25 秒/题。两者与离线评测在个别题上会有确定性翻转（实测服务器版 SFT 20/20、RFT-不验证 17/20），所以本页用于看模型差异，不用来核对分数。</div>
+  <div class="note">解码口径：temperature=0、max_tokens=512、stop 字符串 + stop_token_ids（&lt;|im_end|&gt;/&lt;|im_start|&gt;）——与评测脚本完全一致。速度取决于后端：服务器版（vLLM 多 LoRA）约 3 秒/题，本地版（transformers + MPS）约 20~45 秒/题。两者与离线评测在个别题上会有确定性翻转（实测服务器版 SFT 20/20、RFT-不验证 17/20），所以本页用于看模型差异，不用来核对分数。</div>
 
   <div class="grid" id="grid"></div>
 </div>

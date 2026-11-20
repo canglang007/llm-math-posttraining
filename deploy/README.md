@@ -8,7 +8,7 @@
 | 引擎 | vLLM 0.34 + bf16，continuous batching | transformers + MPS/CPU |
 | 硬件 | 单张 16 GB NVIDIA 卡 | Apple Silicon，16 GB 统一内存起 |
 | 模型 | base + 4 个 LoRA 常驻，切换无开销 | 同上，用 `set_adapter` 切换 |
-| 速度 | **2.7~4.3 秒/题**（4060 Ti / 5060 Ti 实测） | 约 10~25 秒/题（M5 16 GB） |
+| 速度 | **2.7~4.3 秒/题**（4060 Ti / 5060 Ti 实测） | **20~45 秒/题**（M5 16 GB 实测，3~5 tok/s） |
 | 适用 | 演示首选、并发请求 | 没机器 / 没卡 / 不想开机时 |
 
 两版都**按需启停**，不需要常驻。
@@ -81,15 +81,28 @@ bash deploy/run_local.sh --dry-run       # 只检查路径与 adapter，不加�
 与服务器版同一个 `curl`（端口一致时就一样），或直接看日志里的
 `[ready] 可用模型：['base', 'a2', 'dpo', 'e2b', 'sft']`。
 
-两条路径已在玩具模型上验证过（M5 16 GB，MPS bf16，peft 0.22 + transformers 5.7）：
-① 不挂 LoRA 只跑 base；② 挂 LoRA 后用 `model` 字段在 adapter 与 base 之间切换。
+已用**真实 4B 模型**实测（M5 16 GB，MPS bf16，peft 0.22 + transformers 5.7）：五个模型全部能出答案，
+同一道题的本地结果与离线 vLLM 结果 **4/5 一致**：
+
+| 模型 | 本地（MPS，eager） | 离线（vLLM，CUDA） | 一致 | 本地耗时 |
+|---|---|---|---|---|
+| Base | 78 | 78 | ✓ | 44 s |
+| SFT | 78 | 84 | ✗ | 24 s |
+| E2b（验证） | 78 | 78 | ✓ | 22 s |
+| A2（不验证） | 84 | 84 | ✓ | 35 s |
+| DPO（26 对） | 84 | 84 | ✓ | 40 s |
+
+> **MPS 上必须用 `eager` 注意力**：transformers 默认走 `sdpa`，实测会让 Qwen3 输出退化成
+> 无限重复（同一段话反复、永远不写 `####`），看起来像模型坏了。`local_server.py` 已对 MPS
+> 自动强制 `eager`；如需覆盖用 `--attn-implementation sdpa|eager|flash_attention_2`。
+> 踩坑记录见 `docs/issue-log.md` 2026-11-20 条目。
 
 ### 4. 与服务器版的差异（必须知道）
 
 | 项 | 差异 | 影响 |
 |---|---|---|
-| 精度 | MPS/CPU 走 bf16/fp16，与 CUDA bf16 **不是同一条数值路径** | 个别题会翻转，属预期 |
-| 速度 | 每条约 10~25 秒 | 演示时先说明，别让人以为是卡了 |
+| 精度 | MPS/CPU 走 bf16/fp16，与 CUDA bf16 **不是同一条数值路径** | 个别题会翻转，属预期（实测 4/5 一致） |
+| 速度 | 每条 20~45 秒（3~5 tok/s） | 演示时先说明，别让人以为是卡了 |
 | 并发 | 单设备串行（内部有锁） | 页面上的 5 个模型是排队返回，不是同时 |
 | 内存 | 16 GB 机器上 bf16 权重占 ~8 GB | 关掉其他大应用；必要时 `--dtype float16` |
 

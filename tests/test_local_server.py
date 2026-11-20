@@ -252,3 +252,11 @@ def test_adapter_scope_switches_adapter() -> None:
     ctx.__enter__()
     assert fake.calls == ["sft"]
     assert fake.disabled == 0
+
+
+def test_default_attn_implementation_forces_eager_on_mps() -> None:
+    """MPS 上 sdpa 会让输出退化为重复循环，必须默认 eager。"""
+    assert ls.default_attn_implementation("mps", None) == "eager"
+    assert ls.default_attn_implementation("cpu", None) is None
+    assert ls.default_attn_implementation("mps", "sdpa") == "sdpa"   # 显式指定优先
+    assert ls.default_attn_implementation("cuda", "eager") == "eager"

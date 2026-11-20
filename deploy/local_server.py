@@ -145,6 +145,7 @@ class LocalEngine:
         device: str = "auto",
         dtype: str = "auto",
         max_new_tokens: int = 512,
+        attn_implementation: str | None = None,
     ) -> None:
         import torch  # 延迟导入：--dry-run 与单测都不需要 torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -180,9 +181,12 @@ class LocalEngine:
         tokenizer = AutoTokenizer.from_pretrained(model_path)
         # 训练时强制了 ChatML 模板，推理必须同模板，否则分布不一致
         tokenizer.chat_template = QWEN_CHATML_TEMPLATE
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path, torch_dtype=torch_dtype, device_map=None
-        ).to(device)
+        attn_implementation = default_attn_implementation(device, attn_implementation)
+        load_kwargs = {"torch_dtype": torch_dtype, "device_map": None}
+        if attn_implementation:
+            load_kwargs["attn_implementation"] = attn_implementation
+        model = AutoModelForCausalLM.from_pretrained(model_path, **load_kwargs).to(device)
+        print(f"[load] attn={getattr(model.config, '_attn_implementation', 'auto')}", flush=True)
         model.eval()
 
         if adapters:
@@ -240,6 +244,18 @@ class _noop:
 
     def __exit__(self, *exc):
         return False
+
+
+def default_attn_implementation(device: str, requested: str | None) -> str | None:
+    """决定注意力实现。
+
+    MPS 上 transformers 默认走 ``sdpa``，实测会让 Qwen3 输出退化成重复循环
+    （同一段话无限重复、永远不写 ``####``）；换成 ``eager`` 后恢复正常。
+    因此 MPS 默认强制 eager，其它后端保持框架默认（None 交给 transformers 决定）。
+    """
+    if requested:
+        return requested
+    return "eager" if device == "mps" else None
 
 
 def adapter_scope(model, model_name: str, has_lora: bool):
@@ -348,6 +364,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--device", default="auto", choices=["auto", "mps", "cpu"])
     parser.add_argument("--dtype", default="auto", choices=["auto", "bfloat16", "float16", "float32"])
     parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument(
+        "--attn-implementation",
+        default=None,
+        choices=["eager", "sdpa", "flash_attention_2"],
+        help="注意力实现；MPS 上 sdpa 可能退化，试 eager",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只打印配置，不加载模型")
     args = parser.parse_args(argv)
 
@@ -367,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
         dtype=args.dtype,
         max_new_tokens=args.max_new_tokens,
+        attn_implementation=args.attn_implementation,
     )
     print(f"[ready] 可用模型：{engine.models()}", flush=True)
     print(f"[ready] endpoint: http://{args.host}:{args.port}/v1", flush=True)

@@ -12,25 +12,44 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-PYTHON="${PYTHON:-python3}"
 MODEL="${MODEL:-Qwen/Qwen3-4B-Base}"
 PORT="${PORT:-8000}"
 
+# 自动挑一个装了 torch/transformers/peft 的解释器：
+# 机器上常有多个 python（系统自带 / Homebrew / conda），默认的 python3 未必有依赖。
+pick_python() {
+  local candidates=()
+  [ -n "${PYTHON:-}" ] && candidates+=("$PYTHON")
+  candidates+=("python3.13" "python3" "/opt/anaconda3/bin/python3" "/opt/homebrew/bin/python3")
+  for cand in "${candidates[@]}"; do
+    command -v "$cand" >/dev/null 2>&1 || continue
+    if "$cand" -c "import torch, transformers, peft" >/dev/null 2>&1; then
+      echo "$cand"; return 0
+    fi
+  done
+  return 1
+}
+
 echo "== 环境检查 =="
+if ! PYTHON="$(pick_python)"; then
+  echo "  没有一个解释器同时具备 torch / transformers / peft。"
+  echo "  先安装（注意用同一个解释器）：pip install -e '.[train]'"
+  echo "  或显式指定：PYTHON=/path/to/python bash deploy/run_local.sh"
+  for cand in python3.13 python3 /opt/anaconda3/bin/python3; do
+    command -v "$cand" >/dev/null 2>&1 || continue
+    echo "    $cand -> $("$cand" -c "
+import importlib
+missing=[m for m in ('torch','transformers','peft') if not importlib.util.find_spec(m)]
+print('缺 ' + ', '.join(missing) if missing else '齐全')
+" 2>/dev/null || echo '无法执行')"
+  done
+  exit 1
+fi
+echo "  解释器：$PYTHON"
 "$PYTHON" - <<'PY'
-import sys
-missing = []
 for name in ("torch", "transformers", "peft"):
-    try:
-        mod = __import__(name)
-    except ImportError:
-        missing.append(name)
-    else:
-        print(f"  {name:14s} {getattr(mod, '__version__', '?')}")
-if missing:
-    print(f"\n缺少依赖：{', '.join(missing)}")
-    print("安装：pip install -e '.[train]'")
-    raise SystemExit(1)
+    mod = __import__(name)
+    print(f"  {name:14s} {getattr(mod, '__version__', '?')}")
 import torch
 print(f"  device        mps={torch.backends.mps.is_available()}")
 if not torch.backends.mps.is_available():
