@@ -39,7 +39,7 @@ test 集全程未参与训练、过滤、选模或调参，仅用于最终评测
 | E4b | GRPO（仅 26 道难题） | 0.8112 (1070) | 1 | 0.00pt | 1.000 |
 
 所有后训练分支（RFT / DPO / GRPO）**从同一个 SFT checkpoint-400 出发**，超参一致，
-差异才能归因到方法与数据，而不是起点。完整配对四格见 `docs/main-results.md`「口径三」。
+差异才能归因到方法与数据，而不是起点。完整配对四格见 `docs/main-results.md` 第一节。
 
 ## 三条发现及其证据链
 
@@ -92,8 +92,8 @@ A2 直接把候选全用上（其中 37 条、12.9% 是错误解）。结果：
 - **规模小**：单模型（4B）、单数据集（GSM8K）。所有"不显著"的结论只对"这个规模 + dev-200/test"成立，
   不能外推成"DPO 没用"。
 - **dev-200 判不出 1pt 级效应**：A2 在 dev 上 p=1.000、在 test 上 p=0.022，是这件事最好的例证。
-- **两个口径不可混用**：历史表为 HF 4bit（`docs/main-results.md`「口径一/二」），
-  权威表为 vLLM bf16（「口径三」），混用会引入约 15% 的逐题翻转。
+- **两套口径不可混用**：历史表为 HF 4bit（`docs/main-results.md` 第三节），
+  权威表为 vLLM bf16（第一节），混用会引入约 15% 的逐题翻转。
 - **未做**：多 seed 重复、MATH 跨分布、更大模型。这些是"把结论做宽"，不是"把结论做对"。
 
 ## 仓库结构
@@ -115,12 +115,15 @@ demo/live.html        实时对比页：连本地 vLLM 服务，同题并发问 
 ## 快速开始
 
 ```bash
-python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/pytest -q          # 91 passed
+python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev,eval]'
+.venv/bin/pytest -q                    # 91 passed，不需要 GPU
 
 python scripts/prepare_data.py --dataset gsm8k
 python scripts/build_sft_data.py --dataset gsm8k --split train
 ```
+
+训练与评测另需 `.[train]`（torch / peft / trl / bitsandbytes），
+本项目在 Linux + NVIDIA GPU（12~16 GB）上验证；Mac 只用于开发、数据检查与单测。
 
 训练（先 dry-run 校验配置与数据，不需要模型）：
 
