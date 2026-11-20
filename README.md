@@ -105,7 +105,8 @@ src/             数据/答案判定/prompt/训练/评测的库代码
 tests/           91 个单测（数据纪律、答案判定、口径守卫、比对逻辑）
 experiments/eval/     全部逐题预测 jsonl（**入库**，可直接核对本文每个数字）
 experiments/{sft,rft,dpo,grpo}/  模型 adapter 与 checkpoint（**不入库**，体积大；脚本可复现）
-deploy/          服务化：serve.sh（vLLM 多 LoRA 一键启动）+ 部署说明（按需启停，非常开）
+deploy/          服务化：serve.sh（服务器 vLLM 多 LoRA）、run_local.sh + local_server.py（本地 MPS 兜底）、
+                  restore_adapters.sh（从备份恢复 adapter）、部署与口径说明
 docs/            main-results（三套口径）、failure-analysis-test、issue-log、设计与数据溯源
 demo/comparison.html  可交互逐题对比（11 个模型的分数 + 同题五模型回答），由 scripts/build_comparison_demo.py 生成
 demo/index.html       早期探索：maj@8 推理时验证（HF 4bit 口径，非最终主线，数字勿与上表混看）
@@ -156,16 +157,20 @@ python scripts/compare_inference_backends.py \
   --candidate experiments/eval/sft-v3-ckpt400-dev200-vllm-bf16.jsonl --dataset gsm8k
 ```
 
-## 服务化（按需启停，非常开）
+## 服务化：两种运行方式，同一套接口
 
-```bash
-bash deploy/serve.sh          # 起 vLLM 服务：base + sft/e2b/a2/dpo 四个 LoRA，OpenAI 兼容接口
-curl http://localhost:8000/v1/models   # 验证
-```
+| 方式 | 一条命令 | 适用 |
+|---|---|---|
+| **服务器**（vLLM，推荐） | `bash deploy/serve.sh` | 有 16 GB NVIDIA 卡；2.7~4.3 秒/题 |
+| **本地**（transformers + MPS） | `bash deploy/run_local.sh` | 服务器不可用时兜底；10~25 秒/题 |
 
-用途：需要时起一个服务，跑通一条请求即可确认可用；用完即停，不需要常驻。
-解码与 prompt 与评测完全一致（greedy、同一 ChatML 模板、同一组 stop 串），
-所以线上答案和文档里的分数可以互相对照。详见 `deploy/README.md`。
+两者都暴露 `/v1/models` 与 `/v1/completions`，`demo/live.html` 不需要改代码，只换端点。
+解码与 prompt 复用同一份实现（greedy、同一 ChatML 模板、同一组停止词与 eos、同一个截断函数），
+所以服务输出可以与文档分数对照；但**不能逐题核对**——在线内核（多 LoRA / MPS）与离线评测
+存在少量确定性翻转，实测见 `deploy/README.md`。
+
+本地版准备：`pip install -e '.[train]'` + `bash deploy/restore_adapters.sh`（从本地备份解出 adapter）。
+两版都按需启停，不需要常驻。
 
 ## 数据与产物在哪
 

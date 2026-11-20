@@ -63,7 +63,7 @@
   <div class="hintbox" id="hintbox">
     还没有连上服务。最常见的原因是<strong>没开 SSH 端口转发</strong>——本页在你自己电脑的浏览器里运行，
     <code>localhost:8000</code> 指的是你的电脑而不是服务器。按下面两步做：
-    <br>① 服务器上启动服务：<code>bash deploy/serve.sh</code>（约 1~2 分钟）
+    <br>① 启动服务：有 GPU 用 <code>bash deploy/serve.sh</code>（约 1~2 分钟）；没有 GPU 就用本地版 <code>bash deploy/run_local.sh</code>
     <br>② 本地另开一个终端，保持窗口不关：
     <code>ssh -N -L 8000:localhost:8000 -p &lt;端口&gt; root@&lt;服务器地址&gt;</code>
     <br>然后点「测试连接」。
@@ -86,7 +86,7 @@
   </div>
 
   <button id="askBtn">并发提问</button>
-  <div class="note">解码口径：temperature=0、max_tokens=512、stop 字符串 + stop_token_ids（&lt;|im_end|&gt;/&lt;|im_start|&gt;）——与评测脚本完全一致，所以这里的答案可与文档中的分数对照。注意：本页走的是多 LoRA 在线内核，与离线单 LoRA 评测在个别题上会有确定性翻转（实测 SFT 20/20、RFT-不验证 17/20）。</div>
+  <div class="note">解码口径：temperature=0、max_tokens=512、stop 字符串 + stop_token_ids（&lt;|im_end|&gt;/&lt;|im_start|&gt;）——与评测脚本完全一致。速度取决于后端：服务器版（vLLM 多 LoRA）约 3 秒/题，本地版（transformers + MPS）约 10~25 秒/题。两者与离线评测在个别题上会有确定性翻转（实测服务器版 SFT 20/20、RFT-不验证 17/20），所以本页用于看模型差异，不用来核对分数。</div>
 
   <div class="grid" id="grid"></div>
 </div>

@@ -307,3 +307,22 @@
   2. 本地看 `demo/live.html` 需要 `ssh -N -L 8000:localhost:8000` 端口转发——页面在本地浏览器跑，`localhost:8000` 不是服务器的。
 - 另记录一个操作教训：`pkill -f "vllm serve"` 通过 ssh 远程执行时会匹配到该 ssh 命令自身，导致会话被自己杀掉（本次踩坑一次，退出码 255）。
 - 部署验证结论完整：能起、多 LoRA 生效、跨域可用、口径可对照（SFT 20/20、a2 17/20）。
+
+## 2026-11-20 16:55 双运行方式：服务器 vLLM + 本地 transformers/MPS（Asia/Shanghai UTC+8）
+
+- 需求：服务器没卡/没开机时仍能跑 `demo/live.html`，不要因为租不到机器而断掉演示能力。
+- 设计：新增 `deploy/local_server.py`（stdlib http.server，OpenAI 兼容最小子集：`/v1/models`、`/v1/completions`）
+  + `deploy/run_local.sh`（环境检查、底座下载提示、adapter 清单）；接口与 vLLM 版一致，演示页零改动。
+- 口径不分叉：本地版直接复用 `math_posttrain.prompts`——`do_sample=False`、`resolve_eos_token_ids`、
+  `generation_stop_strings()`、`truncate_generation`，没有第二份实现。
+- 依赖：新增 `peft`（本地环境此前缺失）。`deploy/restore_adapters.sh` 从 1.4 GB 备份包中单次解出 4 个 adapter（约 320 MB，实测 3.7 秒）。
+- 验证（玩具模型，M5 16 GB，MPS bf16，peft 0.22 + transformers 5.7）：
+  - 不挂 LoRA 只跑 base：200 OK；
+  - 挂 LoRA 后 `model` 字段在 adapter 与 base 之间切换：两条都 200；
+  - 非 greedy 请求返回 400；未知模型返回 404；OPTIONS 预检返回 204 + 允许 `Origin: null`。
+  - 单测 110 passed（新增 19 个：配置解析、adapter 过滤、响应格式、greedy 守卫、CORS、真实 HTTP 往返、adapter 作用域）。
+- **修掉的 bug**：未挂 LoRA 时 `base` 仍调用 `model.disable_adapter()`，普通模型没有该方法 →
+  `AttributeError`。已抽出 `adapter_scope()` 并补三条单测（对应「有/无 LoRA × base/adapter」）。
+- 网络坑：本机在代理后，`hf-mirror.com` 不可达而默认端点可用；文档改为「镜像不通就不要设 `HF_ENDPOINT`」。
+- 边界：MPS/CPU 与 CUDA bf16 数值路径不同，本地版**只用于演示与自查，不作为实验数字来源**；
+  真模型（4B，8 GB）的本地加载未在本机执行（项目约定 Mac 不跑真模型），首次使用时按 `deploy/README.md` 走。
