@@ -86,6 +86,7 @@
   </div>
 
   <button id="askBtn">并发提问</button>
+  <button class="ghost" id="saveBtn" disabled>保存本次结果</button>
   <div class="note">解码口径：temperature=0、max_tokens=512、stop 字符串 + stop_token_ids（&lt;|im_end|&gt;/&lt;|im_start|&gt;）——与评测脚本完全一致。速度取决于后端：服务器版（vLLM 多 LoRA）约 3 秒/题，本地版（transformers + MPS）约 20~45 秒/题。两者与离线评测在个别题上会有确定性翻转（实测服务器版 SFT 20/20、RFT-不验证 17/20），所以本页用于看模型差异，不用来核对分数。</div>
 
   <div class="grid" id="grid"></div>
@@ -108,6 +109,7 @@ const MODELS = [
   {key:"base",label:"Base"},
 ];
 const selected = new Set(MODELS.map(m => m.key));
+let lastRun = null;
 
 const $ = id => document.getElementById(id);
 const endpointInput = $("endpoint");
@@ -214,6 +216,8 @@ async function askAll(){
   if (!models.length){ alert("至少选一个模型"); return; }
 
   $("askBtn").disabled = true;
+  $("saveBtn").disabled = true;
+  lastRun = null;
   const states = {};
   models.forEach(m => states[m.key] = {status:"pending"});
   const paint = () => $("grid").innerHTML = models.map(m => cardHTML(m.key, states[m.key])).join("");
@@ -234,12 +238,89 @@ async function askAll(){
     paint();
   }));
 
+  lastRun = {
+    at: new Date(),
+    endpoint: base,
+    question,
+    reference,
+    decodedStops: STOPS,
+    stopTokenIds: STOP_TOKEN_IDS,
+    rows: models.map(m => ({label: m.label, key: m.key, ...states[m.key]})),
+  };
   $("askBtn").disabled = false;
+  $("saveBtn").disabled = false;
 }
+
+// 把当前一轮结果导出成 Markdown：表格给结论，正文块留全部原文，便于贴到文档或存档。
+function pad2(n){ return String(n).padStart(2, "0"); }
+function stamp(d){
+  const tz = -d.getTimezoneOffset();
+  const sign = tz >= 0 ? "+" : "-";
+  const tzStr = `UTC${sign}${pad2(Math.floor(Math.abs(tz)/60))}:${pad2(Math.abs(tz)%60)}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} `
+       + `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())} ${tzStr}`;
+}
+function fileStamp(d){
+  return `${d.getFullYear()}${pad2(d.getMonth()+1)}${pad2(d.getDate())}-`
+       + `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
+}
+
+function buildMarkdown(run){
+  const lines = [];
+  lines.push("# 实时多模型对比记录", "");
+  lines.push(`- 时间：${stamp(run.at)}`);
+  lines.push(`- 服务地址：${run.endpoint}`);
+  lines.push(`- 解码：temperature=0，max_tokens=512，stop=${JSON.stringify(run.decodedStops)}，`
+           + `stop_token_ids=${JSON.stringify(run.stopTokenIds)}`);
+  lines.push("");
+  lines.push("## 题目", "", run.question, "");
+  lines.push("## 参考答案", "", run.reference || "（未填，不做判定）", "");
+
+  lines.push("## 结果", "");
+  lines.push("| 模型 | 抽取答案 | 判定 | 延迟 | 生成 token |");
+  lines.push("| --- | --- | --- | --- | --- |");
+  for (const r of run.rows){
+    if (r.status === "done"){
+      const judge = r.judged === null ? "未判定" : (r.judged ? "正确" : "错误");
+      lines.push(`| ${r.label} | ${r.answer ?? "（未抽取到）"} | ${judge} | ${r.latency} ms | ${r.tokens ?? "-"} |`);
+    } else {
+      lines.push(`| ${r.label} | - | 请求失败 | - | - |`);
+    }
+  }
+  lines.push("");
+
+  lines.push("## 完整输出", "");
+  for (const r of run.rows){
+    const head = r.status === "done"
+      ? `### ${r.label}（${r.judged === null ? "未判定" : (r.judged ? "正确" : "错误")}，${r.latency} ms，${r.tokens ?? "-"} tokens）`
+      : `### ${r.label}（请求失败）`;
+    lines.push(head, "");
+    if (r.status === "done"){
+      lines.push("```text", r.text.trim() || "(空)", "```", "");
+    } else {
+      lines.push(`\`\`\`text\n${r.error}\n\`\`\``, "");
+    }
+  }
+  return lines.join("\n");
+}
+
+function download(name, text, mime){
+  const blob = new Blob([text], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 
 renderChips();
 $("pingBtn").onclick = ping;
 $("askBtn").onclick = askAll;
+$("saveBtn").onclick = () => {
+  if (!lastRun) return;
+  download(`math-demo-run-${fileStamp(lastRun.at)}.md`, buildMarkdown(lastRun), "text/markdown;charset=utf-8");
+};
 ping();
 </script>
 </body>
