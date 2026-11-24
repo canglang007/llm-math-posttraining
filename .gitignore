@@ -15,3 +15,4 @@ models/
 
 # 个人/过程类文档：只本地保留，不进仓库
 internal/
+AGENTS.md
