@@ -3,7 +3,7 @@
 用一个 4B 模型（Qwen3-4B-Base）和公开数据（GSM8K），把**"后训练的数据怎么造、怎么验、值多少钱"**
 做成可复现、可检验的实验：11 个模型权重（Base / SFT / 3 个 RFT / 3 个 DPO / 2 个 GRPO）、
 1319 题 test 终评、每一步都做配对显著性检验，
-**9 个方法对比里有 8 个未达统计显著**，这一结论一并记录。
+**相对 SFT 的 9 个后训练变体均未达统计显著**，这一结论一并记录。
 
 > 一句话主张：**数据引擎的价值有两层——SFT 用官方 CoT 建立格式地基，自采样数据必须过答案验证才能用。**
 > 其余所有方法（RFT / DPO / GRPO）在这个规模上都无法稳定超过 SFT。
@@ -15,10 +15,21 @@
 | SFT 是唯一的大效应 | Base 0.7604 → SFT 0.8112，**+5.08pt** | p=0.0002 |
 | 采样数据不经验证会伤模型 | 验证版 0.8120 vs 不验证版 0.7945，**+1.74pt** | p=0.022 |
 | 其余方法均无显著增益 | 最好的 DPO(26 对) +0.91pt，其余 −1.0~+0.76pt | p≥0.23 |
+| 单分布 SFT 存在跨分布对齐税 | MATH-500：Base 0.6260 → SFT 0.4640（**−16.20pt**），平均长度 1212→518 字符 | p=8.7e-11 |
 
 评测与线上服务统一使用 vLLM（0.34 + bf16 + greedy）。为与历史结果对照，评测前先做口径校准：
 vLLM bf16 与历史 HF 4bit 的逐题一致率 84.5%，同精度下为 96.7%——差异主要来自 4bit 量化噪声，
 因此两种口径的数字不可混用。
+
+```mermaid
+flowchart LR
+    E0["E0: Qwen3-4B-Base\n0.7604 (抽取失败 13.3%)"] -->|"官方 CoT 6973 条\nLoRA SFT (+5.08pt, p=0.0002)"| E1["E1: SFT (ckpt-400)\n0.8112 (公共起点)"]
+    E1 -->|"同题自采样 + 答案验证\n286 题"| E2b["E2b: RFT 验证版\n0.8120"]
+    E1 -->|"同批候选不过滤\n含 12.9% 错解"| A2["A2: RFT 不验证\n0.7945 (-1.74pt vs E2b, p=0.022)"]
+    E1 -->|"验证器偏好对\n26 / 79 对"| E3["E3b/c: DPO\n0.8203 / 0.8188 (p≥0.23)"]
+    E1 -->|"在线采样 + 规则奖励\n120 / 26 题"| E4["E4/4b: GRPO\n0.8089 / 0.8112 (p≥0.76)"]
+    E2b & A2 & E3 & E4 --> Eval["GSM8K test 1319 题\nvLLM bf16 + McNemar 检验"]
+```
 
 ## 主结果：test 1319 题（vLLM 0.34 + bf16 + greedy）
 
@@ -117,7 +128,7 @@ demo/live.html        实时对比页：连本地 vLLM 服务，同题并发问 
 
 ```bash
 python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev,eval]'
-.venv/bin/pytest -q                    # 91 passed，不需要 GPU
+.venv/bin/pytest -q                    # 111 passed，不需要 GPU
 
 python scripts/prepare_data.py --dataset gsm8k
 python scripts/build_sft_data.py --dataset gsm8k --split train
@@ -197,5 +208,5 @@ python scripts/compare_inference_backends.py \
 ## 后续工作
 
 1. **多 seed 重复**：为 A2 vs E2b 的 1.74pt（p=0.022）提供稳健性证据（3 个 seed × 2 组）；
-2. **MATH 跨分布**：检验"验证器贡献"是否在更难分布上放大（数据已备：6998 train / 500 dev）；
+2. **混合分布 SFT + 难分布 RL**：MATH-500 跨分布评测已证实单分布 GSM8K SFT 存在长度坍缩（−16.20pt，p=8.7e-11），后续可混入 MATH 长 CoT 缓解对齐税并在难分布上释放 GRPO 信号；
 3. **DPO 扩到 300+ 对**：当前 79 对已到平台期，需要更多外部信号验证"信息来源决定天花板"。
