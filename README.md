@@ -135,7 +135,7 @@ python scripts/build_sft_data.py --dataset gsm8k --split train
 ```
 
 训练与评测另需 `.[train]`（torch / peft / trl / bitsandbytes），
-本项目在 Linux + NVIDIA GPU（12~16 GB）上验证；Mac 只用于开发、数据检查与单测。
+在 Linux + NVIDIA GPU（12~24 GB）上验证；数据准备与 111 项单测可在 CPU / macOS 上直接运行。
 
 训练（先 dry-run 校验配置与数据，不需要模型）：
 
@@ -180,7 +180,7 @@ python scripts/compare_inference_backends.py \
 所以服务输出可以与文档分数对照；但**不能逐题核对**——在线内核（多 LoRA / MPS）与离线评测
 存在少量确定性翻转，实测见 `deploy/README.md`。
 
-本地版准备：`pip install -e '.[train]'` + `bash deploy/restore_adapters.sh`（从本地备份解出 adapter）。
+本地版准备：`pip install -e '.[train]'` 并准备好训练产出的 LoRA adapter 权重即可运行。
 两版都按需启停，不需要常驻。
 
 ## 数据与产物在哪
